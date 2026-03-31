@@ -1,21 +1,13 @@
 """PyUSB virtual FTDI device."""
 
-# Copyright (c) 2020-2021, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2020-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-#pylint: disable-msg=missing-docstring
-#pylint: disable-msg=unused-argument
-#pylint: disable-msg=invalid-name
-#pylint: disable-msg=too-many-arguments
-#pylint: disable-msg=too-many-locals
-#pylint: disable-msg=too-many-branches
-#pylint: disable-msg=too-many-statements
-#pylint: disable-msg=too-many-instance-attributes
-#pylint: disable-msg=too-many-public-methods
-#pylint: disable-msg=too-few-public-methods
-#pylint: disable-msg=no-self-use
+# pylint: disable=missing-docstring
+# pylint: disable=unused-argument
+# pylint: disable=invalid-name
 
 import os
 from array import array
@@ -24,13 +16,15 @@ from collections import deque
 from enum import IntEnum, unique
 from logging import getLogger
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
-from sys import version_info
 from threading import Event, Lock, Thread
 from time import sleep, time as now
-from typing import List, Mapping, NamedTuple, Optional, Sequence, Tuple
+from typing import (TYPE_CHECKING, List, Mapping, NamedTuple, Optional,
+                    Sequence, Tuple)
 from pyftdi.eeprom import FtdiEeprom   # only for consts, do not use code
 from .consts import FTDICONST, USBCONST
 from .mpsse import VirtMpsseEngine, VirtMpsseTracer
+if TYPE_CHECKING:
+    from .backend import VirtDeviceHandle
 
 
 class Pipe:
@@ -211,7 +205,6 @@ class VirtFtdiPort:
         rx: Fifo  # Host-to-FTDI
         tx: Fifo  # FTDI-to-host
 
-
     @unique
     class BitMode(IntEnum):
         """Function mode selection.
@@ -230,14 +223,15 @@ class VirtFtdiPort:
         SYNCFF = 0x40   # Single Channel Synchronous FIFO mode
 
     FIFO_SIZES = {
-        0x0200: (128, 128),    # FT232AM: TX: 128, RX: 128
-        0x0400: (128, 384),    # FT232BM: TX: 128, RX: 384
-        0x0500: (128, 384),    # FT2232C: TX: 128, RX: 384
-        0x0600: (256, 128),    # FT232R:  TX: 256, RX: 128
-        0x0700: (4096, 4096),  # FT2232H: TX: 4KiB, RX: 4KiB
-        0x0800: (2048, 2048),  # FT4232H: TX: 2KiB, RX: 2KiB
-        0x0900: (1024, 1024),  # FT232H:  TX: 1KiB, RX: 1KiB
-        0x1000: (512, 512),    # FT-X:    TX: 512, RX: 512
+        0x0200: (128, 128),    # FT232AM:   TX: 128, RX: 128
+        0x0400: (128, 384),    # FT232BM:   TX: 128, RX: 384
+        0x0500: (128, 384),    # FT2232C:   TX: 128, RX: 384
+        0x0600: (256, 128),    # FT232R:    TX: 256, RX: 128
+        0x0700: (4096, 4096),  # FT2232H:   TX: 4KiB, RX: 4KiB
+        0x0800: (2048, 2048),  # FT4232H:   TX: 2KiB, RX: 2KiB
+        0x0900: (1024, 1024),  # FT232H:    TX: 1KiB, RX: 1KiB
+        0x1000: (512, 512),    # FT-X:      TX: 512, RX: 512
+        0x3600: (2048, 2048),  # FT4232HA:  TX: 2KiB, RX: 2KiB
     }
     """FTDI chip internal FIFO sizes.
 
@@ -252,7 +246,8 @@ class VirtFtdiPort:
         0x0700: 16,
         0x0800: 8,
         0x0900: 16,
-        0x1000: 8}
+        0x1000: 8,
+        0x3600: 8}
     """Interterface pin count."""
 
     UART_PINS = IntEnum('UartPins', 'TXD RXD RTS CTS DTR DSR DCD RI', start=0)
@@ -903,10 +898,9 @@ class VirtFtdiPort:
                     else:
                         _wait_delay = self.SLEEP_DELAY
                     continue
-                else:
-                    self.log.error('Unimplemented support for command %d',
-                                   command)
-                    continue
+                self.log.error('Unimplemented support for command %d',
+                               command)
+                continue
             self.log.debug('End of worker %s', self._tx_thread.name)
         except Exception as exc:
             self.log.error('Dead of worker %s: %s', self._tx_thread.name, exc)
@@ -972,6 +966,7 @@ class VirtFtdi:
         0x0800: Properties(4, 8, 0),   # FT4232H
         0x0900: Properties(1, 8, 10),  # FT232H
         0x1000: Properties(1, 8, 4),   # FT231X
+        0x3600: Properties(4, 8, 0),   # FT4232HA
     }
     """Width of port/bus (regular, cbus)."""
 

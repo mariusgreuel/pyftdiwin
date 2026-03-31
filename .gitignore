@@ -9,3 +9,4 @@ build/
 sphinx/
 .vs/
 .vscode/
+.venv/

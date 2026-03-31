@@ -810,8 +810,7 @@ class _D2xx(usb.backend.IBackend):
         buff[0] = 0
         buff[1] = 0
 
-        if rx_bytes > len(buff) - 2:
-            rx_bytes = len(buff) - 2
+        rx_bytes = min(rx_bytes, len(buff) - 2)
 
         c_buff = (c_ubyte * len(buff)).from_buffer(buff)
         bytes_returned = FT_Read(

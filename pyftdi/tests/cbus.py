@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2020, Emmanuel Blot <emmanuel.blot@free.fr>
+"""CBUS unit tests."""
+
+# Copyright (c) 2020-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -9,15 +11,16 @@
 import sys
 from doctest import testmod
 from os import environ
-from unittest import TestCase, TestSuite, makeSuite, main as ut_main
+from sys import modules
+from unittest import TestCase, TestLoader, TestSuite, main as ut_main
 from pyftdi.ftdi import Ftdi, FtdiError
 from pyftdi.eeprom import FtdiEeprom
 
-#pylint: disable-msg=empty-docstring
-#pylint: disable-msg=missing-docstring
+# pylint: disable=empty-docstring
+# pylint: disable=missing-docstring
 
 
-class CbusGpioTestCase(TestCase):
+class CbusOutputGpioTestCase(TestCase):
     """FTDI CBUS GPIO feature test case"""
 
     @classmethod
@@ -25,7 +28,7 @@ class CbusGpioTestCase(TestCase):
         """Default values"""
         cls.url = environ.get('FTDI_DEVICE', 'ftdi:///1')
 
-    def test_output_gpio(self):
+    def test_gpio(self):
         """Simple test to demonstrate ouput bit-banging on CBUS.
 
            You need a CBUS-capable FTDI (FT232R/FT232H/FT230X/FT231X), whose
@@ -58,7 +61,16 @@ class CbusGpioTestCase(TestCase):
             sig = int(not ftdi.get_cts()) | (int(not ftdi.get_dsr()) << 1)
             self.assertEqual(value, sig)
 
-    def test_input_gpio(self):
+
+class CbusInputGpioTestCase(TestCase):
+    """FTDI CBUS GPIO feature test case"""
+
+    @classmethod
+    def setUpClass(cls):
+        """Default values"""
+        cls.url = environ.get('FTDI_DEVICE', 'ftdi:///1')
+
+    def test_gpio(self):
         """Simple test to demonstrate input bit-banging on CBUS.
 
            You need a CBUS-capable FTDI (FT232R/FT232H/FT230X/FT231X), whose
@@ -94,9 +106,14 @@ class CbusGpioTestCase(TestCase):
 
 def suite():
     suite_ = TestSuite()
+    loader = TestLoader()
+    mod = modules[__name__]
     # peak the test that matches your HW setup, see test doc for details
-    # suite_.addTest(makeSuite(CbusGpioTestCase, 'test_output'))
-    suite_.addTest(makeSuite(CbusGpioTestCase, 'test_input'))
+    tests = (  # 'CbusOutputGpio',
+             'CbusInputGpio')
+    for testname in tests:
+        testcase = getattr(mod, f'{testname}TestCase')
+        suite_.addTest(loader.loadTestsFromTestCase(testcase))
     return suite_
 
 

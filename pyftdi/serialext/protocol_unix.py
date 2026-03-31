@@ -1,26 +1,25 @@
-# Copyright (c) 2008-2016, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2008-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # Copyright (c) 2016, Emmanuel Bouaziz <ebouaziz@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 # this file has not been updated for a while, so coding style needs some love
-#pylint: disable-msg=broad-except
-#pylint: disable-msg=attribute-defined-outside-init
-#pylint: disable-msg=redefined-outer-name
-#pylint: disable-msg=invalid-name
-#pylint: disable-msg=too-few-public-methods
-#pylint: disable-msg=missing-function-docstring
-#pylint: disable-msg=missing-class-docstring
-#pylint: disable-msg=missing-module-docstring
+# pylint: disable=broad-except
+# pylint: disable=attribute-defined-outside-init
+# pylint: disable=redefined-outer-name
+# pylint: disable=invalid-name
+# pylint: disable=missing-function-docstring
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-module-docstring
 
 import errno
 import os
 import select
 import socket
 from io import RawIOBase
-from serial import (SerialBase, SerialException, portNotOpenError,
-                    writeTimeoutError, VERSION as pyserialver)
+from serial import (SerialBase, SerialException, PortNotOpenError,
+                    VERSION as pyserialver)
 from ..misc import hexdump
 
 
@@ -44,7 +43,7 @@ class SocketSerial(SerialBase):
     BACKEND = 'socket'
     VIRTUAL_DEVICE = True
 
-    PYSERIAL_VERSION = tuple([int(x) for x in pyserialver.split('.')])
+    PYSERIAL_VERSION = tuple(int(x) for x in pyserialver.split('.'))
 
     def _reconfigure_port(self):
         pass
@@ -66,13 +65,13 @@ class SocketSerial(SerialBase):
                     filename = os.path.join(home, filename[2:])
             self._filename = filename
             self.sock.connect(self._filename)
-        except Exception as e:
+        except Exception as exc:
             self.close()
-            msg = "Could not open port: %s" % (str(e),)
-            if isinstance(e, socket.error):
-                # pylint: disable-msg=no-member
-                raise SerialExceptionWithErrno(msg, e.errno) from e
-            raise SerialException(msg) from e
+            msg = f'Could not open port: {exc}'
+            if isinstance(exc, socket.error):
+                # pylint: disable=no-member
+                raise SerialExceptionWithErrno(msg, exc.errno) from exc
+            raise SerialException(msg) from exc
         self._set_open_state(True)
         self._lastdtr = None
 
@@ -91,7 +90,6 @@ class SocketSerial(SerialBase):
 
     def in_waiting(self):
         """Return the number of characters currently in the input buffer."""
-        #pylint: disable-msg=no-self-use
         return 0
 
     def read(self, size=1):
@@ -99,7 +97,7 @@ class SocketSerial(SerialBase):
            return less characters as requested. With no timeout it will block
            until the requested number of bytes is read."""
         if self.sock is None:
-            raise portNotOpenError
+            raise PortNotOpenError
         read = bytearray()
         if size > 0:
             while len(read) < size:
@@ -110,7 +108,7 @@ class SocketSerial(SerialBase):
                 if not buf:
                     # Some character is ready, but none can be read
                     # it is a marker for a disconnected peer
-                    raise portNotOpenError
+                    raise PortNotOpenError
                 read += buf
                 if self._timeout >= 0 and not buf:
                     break  # early abort on timeout
@@ -119,24 +117,24 @@ class SocketSerial(SerialBase):
     def write(self, data):
         """Output the given string over the serial port."""
         if self.sock is None:
-            raise portNotOpenError
+            raise PortNotOpenError
         t = len(data)
         d = data
         while t > 0:
             try:
-                if self._writeTimeout is not None and self._writeTimeout > 0:
+                if self.writeTimeout is not None and self.writeTimeout > 0:
                     _, ready, _ = select.select([], [self.sock], [],
-                                                self._writeTimeout)
+                                                self.writeTimeout)
                     if not ready:
-                        raise writeTimeoutError
+                        raise TimeoutError()
                 n = self.sock.send(d)
                 if self._dump:
                     print(hexdump(d[:n]))
-                if self._writeTimeout is not None and self._writeTimeout > 0:
+                if self.writeTimeout is not None and self.writeTimeout > 0:
                     _, ready, _ = select.select([], [self.sock], [],
-                                                self._writeTimeout)
+                                                self.writeTimeout)
                     if not ready:
-                        raise writeTimeoutError
+                        raise TimeoutError()
                 d = d[n:]
                 t = t - n
             except OSError as e:
@@ -166,7 +164,7 @@ class SocketSerial(SerialBase):
     def _update_dtr_state(self):
         """Set terminal status line: Data Terminal Ready"""
 
-    def setDTR(self, on=1):
+    def setDTR(self, value=1):
         """Set terminal status line: Data Terminal Ready"""
 
     @property
@@ -194,7 +192,7 @@ class SocketSerial(SerialBase):
     def nonblocking(self):
         """internal - not portable!"""
         if self.sock is None:
-            raise portNotOpenError
+            raise PortNotOpenError
         self.sock.setblocking(0)
 
     def dump(self, enable):

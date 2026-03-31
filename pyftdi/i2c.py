@@ -1,18 +1,9 @@
-# Copyright (c) 2017-2021, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2017-2025, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """I2C support for PyFdti"""
-
-#pylint: disable-msg=too-many-lines
-#pylint: disable-msg=too-many-locals
-#pylint: disable-msg=too-many-instance-attributes
-#pylint: disable-msg=too-many-public-methods
-#pylint: disable-msg=too-many-arguments
-#pylint: disable-msg=too-many-branches
-#pylint: disable-msg=too-many-statements
-
 
 from binascii import hexlify
 from collections import namedtuple
@@ -117,7 +108,7 @@ class I2cPort:
 
     def read_from(self, regaddr: int, readlen: int = 0,
                   relax: bool = True, start: bool = True) -> bytes:
-        """Read one or more bytes from a remote slave
+        """Read one or more bytes from a given register at remote slave
 
            :param regaddr: slave register address to read from
            :param readlen: count of bytes to read out.
@@ -134,7 +125,7 @@ class I2cPort:
     def write_to(self, regaddr: int,
                  out: Union[bytes, bytearray, Iterable[int]],
                  relax: bool = True, start: bool = True):
-        """Read one or more bytes from a remote slave
+        """Write one or more bytes to a given register at a remote slave
 
            :param regaddr: slave register address to write to
            :param out: the byte buffer to send
@@ -222,10 +213,10 @@ class I2cPort:
         return self._address
 
     def _make_buffer(self, regaddr: int,
-                     out: Union[bytes, bytearray, Iterable[int], None] = None)\
-                     -> bytes:
+                     out: Union[bytes, bytearray, Iterable[int],
+                                None] = None) -> bytes:
         data = bytearray()
-        data.extend(spack('%s%s' % (self._endian, self._format), regaddr))
+        data.extend(spack(f'{self._endian}{self._format}', regaddr))
         if out:
             data.extend(out)
         return bytes(data)
@@ -353,10 +344,10 @@ class I2cController:
     HIGH = 0xff
     BIT0 = 0x01
     IDLE = HIGH
-    SCL_BIT = 0x01  #AD0
-    SDA_O_BIT = 0x02  #AD1
-    SDA_I_BIT = 0x04  #AD2
-    SCL_FB_BIT = 0x80  #AD7
+    SCL_BIT = 0x01  # AD0
+    SDA_O_BIT = 0x02  # AD1
+    SDA_I_BIT = 0x04  # AD2
+    SCL_FB_BIT = 0x80  # AD7
     PAYLOAD_MAX_LENGTH = 0xFF00  # 16 bits max (- spare for control)
     HIGHEST_I2C_ADDRESS = 0x7F
     DEFAULT_BUS_FREQUENCY = 100000.0
@@ -399,6 +390,7 @@ class I2cController:
         self._ck_idle = 0
         self._read_optim = True
         self._disable_3phase_clock = False
+        self._clkstrch = False
 
     def set_retry_count(self, count: int) -> None:
         """Change the default retry count when a communication error occurs,
@@ -447,10 +439,10 @@ class I2cController:
         else:
             timings = self.I2C_1M
         if 'clockstretching' in kwargs:
-            clkstrch = bool(kwargs['clockstretching'])
+            self._clkstrch = bool(kwargs['clockstretching'])
             del kwargs['clockstretching']
         else:
-            clkstrch = False
+            self._clkstrch = False
         if 'direction' in kwargs:
             io_dir = int(kwargs['direction'])
             del kwargs['direction']
@@ -478,7 +470,7 @@ class I2cController:
             ck_buf = self._compute_delay_cycles(timings.t_buf)
             self._ck_idle = max(ck_su_sta, ck_buf)
             self._ck_delay = ck_buf
-            if clkstrch:
+            if self._clkstrch:
                 self._i2c_mask = self.I2C_MASK_CS
             else:
                 self._i2c_mask = self.I2C_MASK
@@ -498,7 +490,6 @@ class I2cController:
                 frequency = self._ftdi.open_mpsse_from_url(url, **kwargs)
             self._frequency = (2.0*frequency)/3.0
             self._tx_size, self._rx_size = self._ftdi.fifo_sizes
-            self._ftdi.enable_adaptive_clock(clkstrch)
             if not self._disable_3phase_clock:
                 self._ftdi.enable_3phase_clock(True)
             try:
@@ -601,7 +592,7 @@ class I2cController:
         if address is None:
             return
         if address > cls.HIGHEST_I2C_ADDRESS:
-            raise I2cIOError("No such I2c slave: 0x%02x" % address)
+            raise I2cIOError(f'No such I2c slave: 0x{address:02x}')
 
     @property
     def frequency_max(self) -> float:
@@ -662,7 +653,7 @@ class I2cController:
         """
         return 16 if self._wide_port else 8
 
-    def read(self, address: int, readlen: int = 1,
+    def read(self, address: Optional[int], readlen: int = 1,
              relax: bool = True) -> bytes:
         """Read one or more bytes from a remote slave
 
@@ -704,7 +695,8 @@ class I2cController:
                     if do_epilog:
                         self._do_epilog()
 
-    def write(self, address: int, out: Union[bytes, bytearray, Iterable[int]],
+    def write(self, address: Optional[int],
+              out: Union[bytes, bytearray, Iterable[int]],
               relax: bool = True) -> None:
         """Write one or more bytes to a remote slave
 
@@ -744,9 +736,9 @@ class I2cController:
                     if do_epilog:
                         self._do_epilog()
 
-    def exchange(self, address: int,
+    def exchange(self, address: Optional[int],
                  out: Union[bytes, bytearray, Iterable[int]],
-                 readlen: int = 0, relax: bool = True) -> bytes:
+                 readlen: int = 0, relax: bool = True) -> bytearray:
         """Send a byte sequence to a remote slave followed with
            a read request of one or more bytes.
 
@@ -776,12 +768,14 @@ class I2cController:
             i2caddress = (address << 1) & self.HIGH
         retries = self._retry_count
         do_epilog = True
+        data = bytearray()
         with self._lock:
             while True:
                 try:
                     self._do_prolog(i2caddress)
                     self._do_write(out)
-                    self._do_prolog(i2caddress | self.BIT0)
+                    if i2caddress is not None:
+                        self._do_prolog(i2caddress | self.BIT0)
                     if readlen:
                         data = self._do_read(readlen)
                     do_epilog = relax
@@ -886,7 +880,7 @@ class I2cController:
         if not self.configured:
             raise I2cIOError("FTDI controller not initialized")
         with self._lock:
-            self._ftdi.write_data(self._immediate)
+            self._ftdi.write_data(bytearray(self._immediate))
             self._ftdi.purge_buffers()
 
     def read_gpio(self, with_output: bool = False) -> int:
@@ -909,8 +903,8 @@ class I2cController:
         """
         with self._lock:
             if (value & self._gpio_dir) != value:
-                raise I2cIOError('No such GPO pins: %04x/%04x' %
-                                 (self._gpio_dir, value))
+                raise I2cIOError(f'No such GPO pins: '
+                                 f'{self._gpio_dir:04x}/{value:04x}')
             # perform read-modify-write
             use_high = self._wide_port and (self.direction & 0xff00)
             data = self._read_raw(use_high)
@@ -964,6 +958,12 @@ class I2cController:
         return (Ftdi.SET_BITS_LOW,
                 self._gpio_low,
                 self.I2C_DIR | (self._gpio_dir & 0xFF))
+
+    @property
+    def _clk_input_data_input(self) -> Tuple[int]:
+        return (Ftdi.SET_BITS_LOW,
+                self.I2C_DIR | self._gpio_low,
+                (self._gpio_dir & 0xFF))
 
     @property
     def _idle(self) -> Tuple[int]:
@@ -1020,7 +1020,7 @@ class I2cController:
             cmd = bytes([Ftdi.SET_BITS_LOW, low_data, low_dir])
         self._ftdi.write_data(cmd)
 
-    def _do_prolog(self, i2caddress: int) -> None:
+    def _do_prolog(self, i2caddress: Optional[int]) -> None:
         if i2caddress is None:
             return
         self.log.debug('   prolog 0x%x', i2caddress >> 1)
@@ -1031,12 +1031,15 @@ class I2cController:
         try:
             self._send_check_ack(cmd)
         except I2cNackError:
-            self.log.warning('NACK @ 0x%02x', (i2caddress>>1))
+            self.log.warning('NACK @ 0x%02x', (i2caddress >> 1))
             raise
 
     def _do_epilog(self) -> None:
         self.log.debug('   epilog')
         cmd = bytearray(self._stop)
+        if self._fake_tristate:
+            # SCL high-Z, SDA high-Z
+            cmd.extend(self._clk_input_data_input)
         self._ftdi.write_data(cmd)
         # be sure to purge the MPSSE reply
         self._ftdi.read_data_bytes(1, 1)
@@ -1048,29 +1051,43 @@ class I2cController:
             cmd.extend(self._clk_lo_data_input)
             # read SDA (ack from slave)
             cmd.extend(self._read_bit)
-            # leave SCL low, restore SDA as output
-            cmd.extend(self._clk_lo_data_hi)
         else:
             # SCL low, SDA high-Z
             cmd.extend(self._clk_lo_data_hi)
             # read SDA (ack from slave)
             cmd.extend(self._read_bit)
         cmd.extend(self._immediate)
-        self._ftdi.write_data(cmd)
-        ack = self._ftdi.read_data_bytes(1, 4)
+        self._i2c_write_data(cmd)
+        ack = self._i2c_read_data_bytes(1, 4)
         if not ack:
             raise I2cIOError('No answer from FTDI')
         if ack[0] & self.BIT0:
             raise I2cNackError('NACK from slave')
 
-    def _do_read(self, readlen: int) -> bytes:
+    def _i2c_write_data(self, cmd: bytearray):
+        if self._clkstrch:
+            cmd.insert(0, self._ftdi.ENABLE_CLK_ADAPTIVE)
+            cmd.append(self._ftdi.DISABLE_CLK_ADAPTIVE)
+        self._ftdi.write_data(cmd)
+
+    def _i2c_read_data_bytes(self, readlen: int, attempt: int = 1,
+                             request_gen=None) -> bytearray:
+        data = self._ftdi.read_data_bytes(readlen, attempt, request_gen)
+        if not data and self._clkstrch:
+            self.log.warning('bus seems wedged')
+            self._ftdi.purge_rx_buffer()
+            self._ftdi.write_data(
+                bytearray((self._ftdi.DISABLE_CLK_ADAPTIVE,)))
+        return data
+
+    def _do_read(self, readlen: int) -> bytearray:
         self.log.debug('- read %d byte(s)', readlen)
         if not readlen:
             # force a real read request on device, but discard any result
             cmd = bytearray()
             cmd.extend(self._immediate)
-            self._ftdi.write_data(cmd)
-            self._ftdi.read_data_bytes(0, 4)
+            self._i2c_write_data(cmd)
+            self._i2c_read_data_bytes(0, 4)
             return bytearray()
         if self._fake_tristate:
             read_byte = (self._clk_lo_data_input +
@@ -1102,10 +1119,11 @@ class I2cController:
             cmd_chunk = bytearray()
             cmd_chunk.extend(read_not_last * chunk_size)
             cmd_chunk.extend(self._immediate)
-            def write_command_gen(length: int):
+
+            def write_command_gen(length: int) -> bytearray:
                 if length <= 0:
                     # no more data
-                    return b''
+                    return bytearray()
                 if length <= chunk_size:
                     cmd = bytearray()
                     cmd.extend(read_not_last * (length-1))
@@ -1115,27 +1133,27 @@ class I2cController:
                 return cmd_chunk
 
             while rem:
-                buf = self._ftdi.read_data_bytes(rem, 4, write_command_gen)
+                buf = self._i2c_read_data_bytes(rem, 4, write_command_gen)
                 self.log.debug('- read %d bytes, rem: %d', len(buf), rem)
                 chunks.append(buf)
                 rem -= len(buf)
         else:
             while rem:
+                size = rem
                 if rem > chunk_size:
                     if not cmd:
                         # build the command sequence only once, as it may be
                         # repeated till the end of the transfer
                         cmd = bytearray()
                         cmd.extend(read_not_last * chunk_size)
-                        size = chunk_size
+                    size = chunk_size
                 else:
                     cmd = bytearray()
                     cmd.extend(read_not_last * (rem-1))
                     cmd.extend(read_last)
                     cmd.extend(self._immediate)
-                    size = rem
-                self._ftdi.write_data(cmd)
-                buf = self._ftdi.read_data_bytes(size, 4)
+                self._i2c_write_data(cmd)
+                buf = self._i2c_read_data_bytes(size, 4)
                 self.log.debug('- read %d byte(s): %s',
                                len(buf), hexlify(buf).decode())
                 chunks.append(buf)
@@ -1150,6 +1168,11 @@ class I2cController:
         self.log.debug('- write %d byte(s): %s',
                        len(out), hexlify(out).decode())
         for byte in out:
-            cmd = bytearray(self._write_byte)
+            if self._fake_tristate:
+                # leave SCL low, restore SDA as output
+                cmd = bytearray(self._clk_lo_data_hi)
+                cmd.extend(self._write_byte)
+            else:
+                cmd = bytearray(self._write_byte)
             cmd.append(byte)
             self._send_check_ack(cmd)

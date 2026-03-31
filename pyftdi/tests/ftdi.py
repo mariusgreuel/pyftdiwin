@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2010-2020, Emmanuel Blot <emmanuel.blot@free.fr>
+"""FTDI detection and connection unit tests."""
+
+# Copyright (c) 2010-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
+
+# pylint: disable=missing-docstring
 
 import logging
 from doctest import testmod
 from os import environ
 from sys import modules, stdout
 from time import sleep, time as now
-from unittest import TestCase, TestSuite, SkipTest, makeSuite, main as ut_main
+from unittest import TestCase, TestLoader, TestSuite, SkipTest, main as ut_main
 from pyftdi import FtdiLogger
 from pyftdi.ftdi import Ftdi, FtdiError
 from pyftdi.usbtools import UsbTools, UsbToolsError
@@ -84,7 +88,7 @@ class ResetTestCase(TestCase):
             ftdi1.close()
             raise SkipTest('FTDI device is not a multi-port device')
         next_port = (int(url1[-1]) % count) + 1
-        url2 = 'ftdi:///%d' % next_port
+        url2 = f'ftdi:///{next_port}'
         ftdi2 = Ftdi()
         self.assertTrue(ftdi1.is_connected, 'Unable to connect to FTDI')
         ftdi2.open_from_url(url2)
@@ -148,10 +152,13 @@ class DisconnectTestCase(TestCase):
 
 def suite():
     suite_ = TestSuite()
-    #suite_.addTest(makeSuite(FtdiTestCase, 'test'))
-    #suite_.addTest(makeSuite(HotplugTestCase, 'test'))
-    suite_.addTest(makeSuite(ResetTestCase, 'test'))
-    suite_.addTest(makeSuite(DisconnectTestCase, 'test'))
+    loader = TestLoader()
+    mod = modules[__name__]
+    #  tests = 'Ftdi Hotplug Reset Disconnect'
+    tests = 'Reset Disconnect'
+    for testname in tests.split():
+        testcase = getattr(mod, f'{testname}TestCase')
+        suite_.addTest(loader.loadTestsFromTestCase(testcase))
     return suite_
 
 

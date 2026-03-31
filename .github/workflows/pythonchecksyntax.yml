@@ -1,7 +1,10 @@
 name: Python syntax tests
 # check that there is no import issues with tool suite
 
-on: [push]
+on:
+  push:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
 
 jobs:
   build:
@@ -9,25 +12,35 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10']
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install setuptools wheel ruamel.yaml
+        pip install -r test-requirements.txt
+
     - name: Check style
       run: |
         python setup.py check_style
+
+    - name: Linter
+      run: |
+        pylint --disable=fixme --disable=duplicate-code \
+          $(git ls-files '*.py')
+
     - name: Install package
       run: |
         python setup.py install
+
     - name: Run tests
       run: |
         python pyftdi/tests/toolsimport.py

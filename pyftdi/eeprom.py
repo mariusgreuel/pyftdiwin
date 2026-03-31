@@ -1,32 +1,23 @@
-# Copyright (c) 2019-2022, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2019-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """EEPROM management for PyFdti"""
 
-#pylint: disable-msg=too-many-arguments
-#pylint: disable-msg=too-many-branches
-#pylint: disable-msg=too-many-instance-attributes
-#pylint: disable-msg=too-many-locals
-#pylint: disable-msg=too-many-public-methods
-#pylint: disable-msg=wrong-import-position
-#pylint: disable-msg=import-error
+# pylint: disable=wrong-import-position
+# pylint: disable=import-error
 
 import sys
 from binascii import hexlify, unhexlify
 from collections import OrderedDict, namedtuple
 from configparser import ConfigParser
-from enum import IntEnum
-if sys.version_info[:2] > (3, 5):
-    from enum import IntFlag
+from enum import IntEnum, IntFlag
 from logging import getLogger
 from random import randint
 from re import match
 from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from typing import BinaryIO, List, Optional, Set, TextIO, Union, Tuple
-if sys.version_info[:2] == (3, 5):
-    from aenum import IntFlag
 from usb.core import Device as UsbDevice
 from .ftdi import Ftdi, FtdiError
 from .misc import classproperty, to_bool, to_int
@@ -39,13 +30,13 @@ class FtdiEepromError(FtdiError):
 class Hex2Int(int):
     """Hexa representation of a byte."""
     def __str__(self):
-        return '0x%02x' % int(self)
+        return f'0x{int(self):02x}'
 
 
 class Hex4Int(int):
     """Hexa representation of a half-word."""
     def __str__(self):
-        return '0x%04x' % int(self)
+        return f'0x{int(self):04x}'
 
 
 class FtdiEeprom:
@@ -70,9 +61,9 @@ class FtdiEeprom:
         0x0800: _PROPS(256, 0x1A, 0x9A, 0x18),   # FT4232H
         0x0900: _PROPS(256, 0x1A, 0xA0, 0x1e),   # FT232H
         0x1000: _PROPS(1024, 0x1A, 0xA0, None),  # FT230X/FT231X/FT234X
+        0x3600: _PROPS(256, 0x1A, 0x9A, 0x18),   # FT4232HA
     }
     """EEPROM properties."""
-
 
     CBUS = IntEnum('CBus',
                    'TXDEN PWREN TXLED RXLED TXRXLED SLEEP CLK48 CLK24 CLK12 '
@@ -120,14 +111,16 @@ class FtdiEeprom:
         self._modified = False
         self._chip: Optional[int] = None
         self._mirror = False
+        self._test_mode = False
 
     def __getattr__(self, name):
         if name in self._config:
             return self._config[name]
-        raise AttributeError('No such attribute: %s' % name)
+        raise AttributeError(f'No such attribute: {name}')
 
     @classproperty
     def eeprom_sizes(cls) -> List[int]:
+        # pylint: disable=no-self-argument
         """Return a list of supported EEPROM sizes.
 
            :return: the supported EEPROM sizes
@@ -251,8 +244,8 @@ class FtdiEeprom:
             eeprom_storage_size = self.size
             if self.is_mirroring_enabled:
                 eeprom_storage_size = self.mirror_sector
-        except FtdiError as fe:
-            raise fe
+        except FtdiError as exc:
+            raise exc
         return eeprom_storage_size
 
     @property
@@ -265,7 +258,7 @@ class FtdiEeprom:
         return bytes(self._eeprom)
 
     @property
-    def properties(self) ->  Set[str]:
+    def properties(self) -> Set[str]:
         """Returns the supported properties for the current device.
 
            :return: the supported properies.
@@ -295,7 +288,7 @@ class FtdiEeprom:
            :return: list of CBUS pins
         """
         pins = [pin for pin in range(0, 10)
-                if self._config.get('cbus_func_%d' % pin, '') == 'GPIO']
+                if self._config.get(f'cbus_func_{pin}', '') == 'GPIO']
         return pins
 
     @property
@@ -312,7 +305,7 @@ class FtdiEeprom:
             cbus = list(range(4))
         mask = 0
         for bix, pin in enumerate(cbus):
-            if self._config.get('cbus_func_%d' % pin, '') == 'GPIO':
+            if self._config.get(f'cbus_func_{pin}', '') == 'GPIO':
                 mask |= 1 << bix
         return mask
 
@@ -345,7 +338,7 @@ class FtdiEeprom:
         """
         return self.has_mirroring and self._mirror
 
-    def enable_mirroring(self, enable : bool) -> None:
+    def enable_mirroring(self, enable: bool) -> None:
         """Enable EEPROM write mirroring. When enabled, this divides the EEPROM
            into 2 sectors and mirrors configuration data between them.
 
@@ -380,7 +373,7 @@ class FtdiEeprom:
         for i in range(0, len(self._eeprom), length):
             chunk = self._eeprom[i:i+length]
             hexa = hexlify(chunk).decode()
-            cfg.set('raw', '@%02x' % i, hexa)
+            cfg.set('raw', f'@{i:02x}', hexa)
         cfg.write(file)
 
     def load_config(self, file: TextIO, section: Optional[str] = None) -> None:
@@ -410,7 +403,7 @@ class FtdiEeprom:
         sect = 'raw'
         if sect in sections and section in (None, 'all', sect):
             if not cfg.has_section(sect):
-                raise FtdiEepromError("No '%s' section in INI file" % sect)
+                raise FtdiEepromError(f"No '{sect}' section in INI file")
             options = cfg.options(sect)
             try:
                 for opt in options:
@@ -421,11 +414,10 @@ class FtdiEeprom:
                     buf = unhexlify(hexval)
                     self._eeprom[address:address+len(buf)] = buf
             except IndexError as exc:
-                raise ValueError("Invalid address in '%s'' section" %
-                                 sect) from exc
+                raise ValueError(f"Invalid address in '{sect}' "
+                                 f"section") from exc
             except ValueError as exc:
-                raise ValueError("Invalid line in '%s'' section" %
-                                 sect) from exc
+                raise ValueError(f"Invalid line in '{sect}' section") from exc
             self._compute_crc(self._eeprom, True)
             if not self._valid:
                 raise ValueError('Loaded RAW section is invalid (CRC mismatch')
@@ -438,12 +430,12 @@ class FtdiEeprom:
         }
         if sect in sections and section in (None, 'all', sect):
             if not cfg.has_section(sect):
-                raise FtdiEepromError("No '%s' section in INI file" % sect)
+                raise FtdiEepromError(f"No '{sect}' section in INI file")
             options = cfg.options(sect)
             for opt in options:
                 value = cfg.get(sect, opt).strip()
                 if opt in vmap:
-                    func = getattr(self, 'set_%s' % vmap[opt])
+                    func = getattr(self, f'set_{vmap[opt]}')
                     func(value)
                 else:
                     self.log.debug('Assigning opt %s = %s', opt, value)
@@ -453,7 +445,7 @@ class FtdiEeprom:
                         self.log.warning("Ignoring setting '%s': %s", opt, exc)
             loaded = True
         if not loaded:
-            raise ValueError('Invalid section: %s' % section)
+            raise ValueError(f'Invalid section: {section}')
         self._sync_eeprom()
 
     def set_serial_number(self, serial: str) -> None:
@@ -486,7 +478,7 @@ class FtdiEeprom:
         mobj = match(r'cbus_func_(\d)', name)
         if mobj:
             if not isinstance(value, str):
-                raise ValueError("'%s' should be specified as a string" % name)
+                raise ValueError("'{name}' should be specified as a string")
             self._set_cbus_func(int(mobj.group(1)), value, out)
             self._dirty.add(name)
             return
@@ -498,6 +490,75 @@ class FtdiEeprom:
         mobj = match(r'group_(\d)_(drive|schmitt|slow_slew)', name)
         if mobj:
             self._set_group(int(mobj.group(1)), mobj.group(2), value, out)
+            self._dirty.add(name)
+            return
+        mobj = match(r'channel_([abcd])_type', name)
+        if mobj:
+            chn = mobj.group(1)
+            if value == 'UART':
+                val = 0
+            else:
+                val = self.CHANNEL[value]
+            if self.device_version == 0x0700 and chn in 'ab':
+                # FT2232H
+                idx = 0x00 if chn == 'a' else 0x01
+                mask = 0x07
+            elif self.device_version == 0x0800:
+                # FT4232H
+                idx = 0x0b
+                mask = 1 << {'a': 4, 'b': 5, 'c': 6, 'd': 7}.get(chn)
+                val = mask if val > 0 else 0
+            elif self.device_version == 0x0900 and chn == 'a':
+                # FT232H
+                idx = 0x00
+                mask = 0x0F
+            else:
+                raise ValueError(
+                    f"Option '{name}' not supported by the device")
+            if val & ~mask:
+                raise ValueError(
+                    f"Unsupported value for setting '{name}': {val}")
+            self._eeprom[idx] &= ~mask
+            self._eeprom[idx] |= val
+            if self.is_mirroring_enabled:
+                idx2 = self.mirror_sector + idx
+                self._eeprom[idx2] &= ~mask
+                self._eeprom[idx2] |= val
+            self._dirty.add(name)
+            return
+        mobj = match(r'channel_([abcd])_driver', name)
+        if mobj:
+            chn = mobj.group(1)
+            if value == 'VCP':
+                val = 1
+            elif value == 'D2XX':
+                val = 0
+            else:
+                raise ValueError(
+                    f"Invalid value '{value} for '{name}'")
+            if self.device_version == 0x0700 and chn in 'ab':
+                # FT2232H
+                idx = 0x00 if chn == 'a' else 0x01
+                mask = 1 << 3
+            elif self.device_version == 0x0800:
+                # FT4232H
+                idx = {'a': 0, 'b': 1, 'c': 0, 'd': 1}.get(chn)
+                mask = 1 << {'a': 3, 'b': 3, 'c': 7, 'd': 7}.get(chn)
+            elif self.device_version == 0x0900 and chn == 'a':
+                # FT232H
+                idx = 0x00
+                mask = 1 << 4
+            else:
+                raise ValueError(
+                    f"Option '{name}' not supported by the device")
+            self._eeprom[idx] &= ~mask
+            if val:
+                self._eeprom[idx] |= mask
+            if self.is_mirroring_enabled:
+                idx2 = self.mirror_sector + idx
+                self._eeprom[idx2] &= ~mask
+                if val:
+                    self._eeprom[idx2] |= mask
             self._dirty.add(name)
             return
         confs = {
@@ -521,7 +582,7 @@ class FtdiEeprom:
         if name in hwords:
             val = to_int(value)
             if not 0 <= val <= 0xFFFF:
-                raise ValueError('Invalid value for %s' % name)
+                raise ValueError(f'Invalid value for {name}')
             offset = hwords[name]
             self._eeprom[offset:offset+2] = spack('<H', val)
             if self.is_mirroring_enabled:
@@ -534,15 +595,14 @@ class FtdiEeprom:
             val = to_bool(value, permissive=False, allow_int=True)
             offset, bit = confs[name]
             mask = 1 << bit
+            idx = 0x08 + offset
             if val:
-                idx = 0x08 + offset
                 self._eeprom[idx] |= mask
                 if self.is_mirroring_enabled:
                     # duplicate in 'sector 2'
                     idx2 = self.mirror_sector + idx
                     self._eeprom[idx2] |= mask
             else:
-                idx = 0x0a + offset
                 self._eeprom[idx] &= ~mask
                 if self.is_mirroring_enabled:
                     # duplicate in 'sector 2'
@@ -561,27 +621,58 @@ class FtdiEeprom:
             self._dirty.add(name)
             return
         if name.startswith('invert_'):
-            if not self.device_version in (0x600, 0x1000):
+            if self.device_version not in (0x600, 0x1000):
                 raise ValueError('UART control line inversion not available '
                                  'with this device')
             self._set_invert(name[len('invert_'):], value, out)
             self._dirty.add(name)
             return
+        if name == 'chip':
+            val = to_int(value)
+            idx = self._PROPERTIES[self.device_version].chipoff
+            if idx is None:
+                raise ValueError(
+                    f"Setting '{name}' is not supported by the chip")
+            self._eeprom[idx] = val
+            if self.is_mirroring_enabled:
+                idx2 = self.mirror_sector + idx
+                self._eeprom[idx2] = val
+            self._dirty.add(name)
+            return
+        if name == 'suspend_dbus7':
+            val = to_bool(value, permissive=False, allow_int=True)
+            if self.device_version == 0x0700:
+                # FT2232H
+                idx = 0x01
+                mask = self.CFG1.SUSPEND_DBUS7.value
+                self._eeprom[idx] &= ~mask
+                if val:
+                    self._eeprom[idx] |= mask
+                if self.is_mirroring_enabled:
+                    idx2 = self.mirror_sector + idx
+                    self._eeprom[idx2] &= ~mask
+                    if val:
+                        self._eeprom[idx2] |= mask
+            else:
+                raise ValueError(
+                    f"Setting '{name}' is not supported by the chip")
+            self._dirty.add(name)
+            return
         if name in self.properties:
             if name not in self._config:
-                raise NotImplementedError("change is not supported")
+                raise NotImplementedError('Change is not supported')
             curval = self._config[name]
             try:
                 curtype = type(curval)
                 value = curtype(value)
             except (ValueError, TypeError) as exc:
-                raise ValueError("cannot be converted to "
-                    "the proper type '%s'" % curtype) from exc
+                raise ValueError(f"Cannot be converted to the proper type "
+                                 f"'{curtype}'") from exc
             if value != curval:
-                raise NotImplementedError("not yet supported")
+                raise NotImplementedError('Not yet supported')
             # no-op change is silently ignored
             return
-        raise ValueError(f"unknown property: {name}")
+        raise ValueError(f'Unknown property: {name}')
 
     def erase(self, erase_byte: Optional[int] = 0xFF) -> None:
         """Erase the whole EEPROM.
@@ -602,7 +693,7 @@ class FtdiEeprom:
         self.set_manufacturer_name('FTDI')
         self.set_product_name(dev_name.upper())
         sernum = ''.join([chr(randint(ord('A'), ord('Z'))) for _ in range(5)])
-        self.set_serial_number('FT%d%s' % (randint(0, 9), sernum))
+        self.set_serial_number(f'FT{randint(0, 9)}{sernum}')
         self.set_property('vendor_id', vid)
         self.set_property('product_id', pid)
         self.set_property('type', dev_ver)
@@ -625,7 +716,7 @@ class FtdiEeprom:
         if self._dirty:
             self._decode_eeprom()
         for name, value in self._config.items():
-            print('%s: %s' % (name, value), file=file or sys.stdout)
+            print(f'{name}: {value}', file=file or sys.stdout)
 
     def commit(self, dry_run: bool = True, no_crc: bool = False) -> bool:
         """Commit any changes to the EEPROM.
@@ -634,7 +725,7 @@ class FtdiEeprom:
                   the EEPROM content
            :param no_crc: do not compute EEPROM CRC. This should only be used
             to perform a full erasure of the EEPROM, as an attempt to recover
-            from a corrupted config. 
+            from a corrupted config.
 
            :return: True if some changes have been committed to the EEPROM
         """
@@ -651,7 +742,7 @@ class FtdiEeprom:
                     if old != new:
                         break
                 pos &= ~0x1
-                raise FtdiEepromError('Write to EEPROM failed @ 0x%02x' % pos)
+                raise FtdiEepromError(f'Write to EEPROM failed @ 0x{pos:02x}')
             self._modified = False
         return dry_run
 
@@ -659,16 +750,20 @@ class FtdiEeprom:
         """Execute a USB device reset."""
         self._ftdi.reset(usb_reset=True)
 
+    def set_test_mode(self, enable: bool):
+        """Enable test mode (silence some warnings)."""
+        self._test_mode = enable
+
     @classmethod
     def _validate_string(cls, string):
         for invchr in ':/':
             # do not accept characters which are interpreted as URL seperators
             if invchr in string:
-                raise ValueError("Invalid character '%s' in string" % invchr)
+                raise ValueError(f"Invalid character '{invchr}' in string")
 
     def _update_var_string(self, name: str, value: str) -> None:
         if name not in self.VAR_STRINGS:
-            raise ValueError('%s is not a variable string' % name)
+            raise ValueError(f'{name} is not a variable string')
         try:
             if value == self._config[name]:
                 return
@@ -686,13 +781,14 @@ class FtdiEeprom:
         stream = bytearray()
         dynpos = self._PROPERTIES[self.device_version].dynoff
         if dynpos > self._size:
-            # if a custom,small EEPROM device is used
+            # if a custom, small EEPROM device is used
             dynpos = 0x40
         data_pos = dynpos
-        # start of var-strings in sector 1 (used for mirrored config)
-        s1_vstr_start = data_pos - self.mirror_sector
         tbl_pos = 0x0e
-        tbl_sector2_pos = self.mirror_sector + tbl_pos
+        if self.is_mirroring_enabled:
+            # start of var-strings in sector 1 (used for mirrored config)
+            s1_vstr_start = data_pos - self.mirror_sector
+            tbl_sector2_pos = self.mirror_sector + tbl_pos
         for name in self.VAR_STRINGS:
             try:
                 ustr = self._config[name].encode('utf-16le')
@@ -702,16 +798,16 @@ class FtdiEeprom:
             stream.append(length)
             stream.append(0x03)  # string descriptor
             stream.extend(ustr)
-            self._eeprom[tbl_pos] = data_pos
+            self._eeprom[tbl_pos] = data_pos | 0x80
+            tbl_pos += 1
             if self.is_mirroring_enabled:
                 self._eeprom[tbl_sector2_pos] = data_pos
-            tbl_pos += 1
-            tbl_sector2_pos += 1
+                tbl_sector2_pos += 1
             self._eeprom[tbl_pos] = length
+            tbl_pos += 1
             if self.is_mirroring_enabled:
                 self._eeprom[tbl_sector2_pos] = length
-            tbl_pos += 1
-            tbl_sector2_pos += 1
+                tbl_sector2_pos += 1
             data_pos += length
         if self.is_mirroring_enabled:
             self._eeprom[s1_vstr_start:s1_vstr_start+len(stream)] = stream
@@ -734,7 +830,7 @@ class FtdiEeprom:
             self.log.debug('No change detected for EEPROM content')
             return
         if not no_crc:
-            if any([x in self._dirty for x in self.VAR_STRINGS]):
+            if any(x in self._dirty for x in self.VAR_STRINGS):
                 self._generate_var_strings()
                 for varstr in self.VAR_STRINGS:
                     self._dirty.discard(varstr)
@@ -778,8 +874,8 @@ class FtdiEeprom:
             crc_s1_start = self.mirror_sector - crc_size
             self._eeprom[crc_s1_start:crc_s1_start+crc_size] = spack('<H', crc)
 
-    def _compute_size(self, 
-            eeprom: Union[bytes, bytearray]) -> Tuple[int, bool]:
+    def _compute_size(self, eeprom: Union[bytes, bytearray]) \
+            -> Tuple[int, bool]:
         """
             :return: Tuple of:
                 - int of usable size of the eeprom
@@ -787,7 +883,7 @@ class FtdiEeprom:
         """
         if self._ftdi.is_eeprom_internal:
             return self._ftdi.max_eeprom_size, False
-        if all([x == 0xFF for x in eeprom]):
+        if all(x == 0xFF for x in eeprom):
             # erased EEPROM, size is unknown
             return self._ftdi.max_eeprom_size, False
         if eeprom[0:0x80] == eeprom[0x80:0x100]:
@@ -809,8 +905,8 @@ class FtdiEeprom:
             else:
                 self.log.error('Invalid CRC or EEPROM content')
         if not self.is_empty and mirror_detected:
-            self.log.info("Detected a mirrored eeprom. " +
-                "Enabling mirrored writing")
+            self.log.info('Detected a mirrored eeprom. '
+                          'Enabling mirrored writing')
             self._mirror = True
         return eeprom
 
@@ -840,12 +936,19 @@ class FtdiEeprom:
             if cfg['use_usb_version']:
                 cfg['usb_version'] = \
                     Hex4Int(sunpack('<H', self._eeprom[0x0c:0x0e])[0])
+        if cfg['type'] == 0xffff:
+            if not self._test_mode:
+                self.log.warning('EEPROM type is erased')
+            return
         name = None
         try:
-            name = Ftdi.DEVICE_NAMES[cfg['type']].replace('-', '')
+            type_ = cfg['type']
+            if type_ == 0:
+                type_ = self.device_version
+            name = Ftdi.DEVICE_NAMES[type_].replace('-', '')
             if name.startswith('ft'):
                 name = name[2:]
-            func = getattr(self, '_decode_%s' % name)
+            func = getattr(self, f'_decode_{name}')
         except (KeyError, AttributeError):
             self.log.warning('No EEPROM decoder for device %s', name or '?')
         else:
@@ -872,7 +975,7 @@ class FtdiEeprom:
             raise ValueError('This property is not supported on this '
                              'device') from exc
         pin_filter = getattr(self,
-                             '_filter_cbus_func_x%x' % self.device_version,
+                             f'_filter_cbus_func_x{self.device_version:x}',
                              None)
         if value == '?' and out:
             items = {item.name for item in cbus}
@@ -881,15 +984,15 @@ class FtdiEeprom:
             print(', '.join(sorted(items)) if items else '(none)', file=out)
             return
         if not 0 <= cpin < count:
-            raise ValueError("Unsupported CBUS pin '%d'" % cpin)
+            raise ValueError(f"Unsupported CBUS pin '{cpin}'")
         try:
             code = cbus[value.upper()].value
         except KeyError as exc:
-            raise ValueError("CBUS pin %d does not have function '%s'" %
-                             (cpin, value)) from exc
+            raise ValueError(f"CBUS pin '{cpin}' does not have function "
+                             f"{value}'") from exc
         if pin_filter and not pin_filter(cpin, value.upper()):
-            raise ValueError("Unsupported CBUS function '%s' for pin '%d'" %
-                             (value, cpin))
+            raise ValueError(f"Unsupported CBUS function '{value}' for pin "
+                             f"'{cpin}'")
         addr = offset + (cpin*width)//8
         if width == 4:
             bitoff = 4 if cpin & 0x1 else 0
@@ -937,7 +1040,7 @@ class FtdiEeprom:
     def _set_group(self, group: int, control: str,
                    value: Union[str, int, bool], out: Optional[TextIO]) \
             -> None:
-        if self.device_version in (0x0700, 0x0800, 0x0900):
+        if self.device_version in (0x0700, 0x0800, 0x0900, 0x3600):
             self._set_group_x232h(group, control, value, out)
             return
         raise ValueError('Group not implemented for this device')
@@ -946,12 +1049,13 @@ class FtdiEeprom:
                               value: Union[str, int, bool],
                               out: Optional[TextIO]) -> None:
         if bus not in 'cd':
-            raise ValueError('Invalid bus: %s' % bus)
+            raise ValueError(f'Invalid bus: {bus}')
         self._set_bus_xprop(0x0c, bus == 'c', control, value, out)
 
     def _set_group_x232h(self, group: int, control: str, value: str,
                          out: Optional[TextIO]) -> None:
-        if self.device_version in (0x0700, 0x800):  # 2232H/4232H
+        # 2232H/4232H/4232HA
+        if self.device_version in (0x0700, 0x800, 0x3600):
             offset = 0x0c + group//2
             nibble = group & 1
         else:  # 232H
@@ -970,7 +1074,7 @@ class FtdiEeprom:
                     return
                 value = int(value)
                 if value not in candidates:
-                    raise ValueError('Invalid drive current: %d mA' % value)
+                    raise ValueError(f'Invalid drive current: {value} mA')
                 value //= 4
                 value -= 1
             elif control in ('slow_slew', 'schmitt'):
@@ -979,10 +1083,9 @@ class FtdiEeprom:
                     return
                 value = int(to_bool(value))
             else:
-                raise ValueError('Unsupported control: %s' % control)
+                raise ValueError(f'Unsupported control: {control}')
         except (ValueError, TypeError) as exc:
-            raise ValueError('Invalid %s value: %s' %
-                             (control, value)) from exc
+            raise ValueError(f'Invalid {control} value: {value}') from exc
         config = self._eeprom[offset]
         if not high_nibble:
             conf = config & 0x0F
@@ -1011,7 +1114,7 @@ class FtdiEeprom:
             print('off, on', file=out)
             return
         if name.upper() not in self.UART_BITS.__members__:
-            raise ValueError('Unknown property: %s' % name)
+            raise ValueError(f'Unknown property: {name}')
         value = to_bool(value, permissive=False)
         code = getattr(self.UART_BITS, name.upper())
         invert = self._eeprom[0x0B]
@@ -1028,20 +1131,20 @@ class FtdiEeprom:
         cfg['channel_a_driver'] = 'VCP' if misc & (1 << 7) else 'D2XX'
         for bit in self.UART_BITS:
             value = self._eeprom[0x0B]
-            cfg['invert_%s' % self.UART_BITS(bit).name] = bool(value & bit)
+            cfg[f'invert_{self.UART_BITS(bit).name}'] = bool(value & bit)
         max_drive = self.DRIVE.LOW.value | self.DRIVE.HIGH.value
         value = self._eeprom[0x0c]
         for grp in range(2):
             conf = value & 0xF
             bus = 'c' if grp else 'd'
-            cfg['%sbus_drive' % bus] = 4 * (1+(conf & max_drive))
-            cfg['%sbus_schmitt' % bus] = bool(conf & self.DRIVE.SCHMITT)
-            cfg['%sbus_slow_slew' % bus] = bool(conf & self.DRIVE.SLOW_SLEW)
+            cfg[f'{bus}bus_drive'] = 4 * (1+(conf & max_drive))
+            cfg[f'{bus}bus_schmitt'] = bool(conf & self.DRIVE.SCHMITT)
+            cfg[f'{bus}bus_slow_slew'] = bool(conf & self.DRIVE.SLOW_SLEW)
             value >>= 4
         for bix in range(4):
             value = self._eeprom[0x1A + bix]
             try:
-                cfg['cbus_func_%d' % bix] = self.CBUSX(value).name
+                cfg[f'cbus_func_{bix}'] = self.CBUSX(value).name
             except ValueError:
                 pass
 
@@ -1059,20 +1162,20 @@ class FtdiEeprom:
         max_drive = self.DRIVE.LOW.value | self.DRIVE.HIGH.value
         for grp in range(2):
             conf = self._eeprom[0x0c+grp]
-            cfg['group_%d_drive' % grp] = 4 * (1+(conf & max_drive))
-            cfg['group_%d_schmitt' % grp] = \
+            cfg[f'group_{grp}_drive'] = 4 * (1+(conf & max_drive))
+            cfg[f'group_{grp}_schmitt'] = \
                 bool(conf & self.DRIVE.SCHMITT.value)
-            cfg['group_%d_slow_slew' % grp] = \
+            cfg[f'group_{grp}_slow_slew'] = \
                 bool(conf & self.DRIVE.SLOW_SLEW.value)
         for bix in range(5):
             value = self._eeprom[0x18 + bix]
             low, high = value & 0x0F, value >> 4
             try:
-                cfg['cbus_func_%d' % ((2*bix)+0)] = self.CBUSH(low).name
+                cfg[f'cbus_func_{(2*bix)+0}'] = self.CBUSH(low).name
             except ValueError:
                 pass
             try:
-                cfg['cbus_func_%d' % ((2*bix)+1)] = self.CBUSH(high).name
+                cfg[f'cbus_func_{(2*bix)+1}'] = self.CBUSH(high).name
             except ValueError:
                 pass
 
@@ -1084,19 +1187,19 @@ class FtdiEeprom:
         cfg['external_oscillator'] = cfg0 & 0x02
         for bit in self.UART_BITS:
             value = self._eeprom[0x0B]
-            cfg['invert_%s' % self.UART_BITS(bit).name] = bool(value & bit)
+            cfg[f'invert_{self.UART_BITS(bit).name}'] = bool(value & bit)
         bix = 0
         while True:
             value = self._eeprom[0x14 + bix]
             low, high = value & 0x0F, value >> 4
             try:
-                cfg['cbus_func_%d' % ((2*bix)+0)] = self.CBUS(low).name
+                cfg[f'cbus_func_{(2*bix)+0}'] = self.CBUS(low).name
             except ValueError:
                 pass
             if bix == 2:
                 break
             try:
-                cfg['cbus_func_%d' % ((2*bix)+1)] = self.CBUS(high).name
+                cfg[f'cbus_func_{(2*bix)+1}'] = self.CBUS(high).name
             except ValueError:
                 pass
             bix += 1
@@ -1118,10 +1221,11 @@ class FtdiEeprom:
         conf = self._eeprom[0x0B]
         rs485 = self.CHANNEL.RS485
         for chix in range(4):
-            cfg['channel_%x_rs485' % (0xa+chix)] = bool(conf & (rs485 << chix))
+            cfg[f'channel_{0xa+chix:x}_type'] = (
+                'RS485' if conf & (rs485 << chix) else 'UART')
 
     def _decode_x232h(self, cfg):
-        # common code for 2232h and 4232h
+        # common code for 2232h, 4232h, 4232ha
         cfg0, cfg1 = self._eeprom[0x00], self._eeprom[0x01]
         cfg['channel_a_driver'] = 'VCP' if (cfg0 & (1 << 3)) else 'D2XX'
         cfg['channel_b_driver'] = 'VCP' if (cfg1 & (1 << 3)) else 'D2XX'
@@ -1131,8 +1235,8 @@ class FtdiEeprom:
                 val = self._eeprom[0x0c + bix//2]
             else:
                 val >>= 4
-            cfg['group_%d_drive' % bix] = 4 * (1+(val & max_drive))
-            cfg['group_%d_schmitt' % bix] = \
+            cfg[f'group_{bix}_drive'] = 4 * (1+(val & max_drive))
+            cfg[f'group_{bix}_schmitt'] = \
                 bool(val & self.DRIVE.SCHMITT.value)
-            cfg['group_%d_slow_slew' % bix] = \
+            cfg[f'group_{bix}_slow_slew'] = \
                 bool(val & self.DRIVE.SLOW_SLEW.value)

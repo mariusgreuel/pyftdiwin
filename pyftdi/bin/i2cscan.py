@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2018-2022, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2018-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Tiny I2C bus scanner."""
 
-#pylint: disable-msg=broad-except
-#pylint: disable-msg=too-few-public-methods
+# pylint: disable=broad-except
 
 from argparse import ArgumentParser, FileType
 from logging import Formatter, StreamHandler, getLogger, DEBUG, ERROR
-from sys import modules, stderr
+from sys import exit as sys_exit, modules, stderr
 from traceback import format_exc
 from pyftdi import FtdiLogger
 from pyftdi.ftdi import Ftdi
@@ -33,7 +32,8 @@ class I2cBusScanner:
     HIGHEST_I2C_SLAVE_ADDRESS = 0x78
 
     @classmethod
-    def scan(cls, url: str, smb_mode: bool = True) -> None:
+    def scan(cls, url: str, smb_mode: bool = True, force: bool = False) \
+            -> None:
         """Scan an I2C bus to detect slave device.
 
            :param url: FTDI URL
@@ -45,6 +45,7 @@ class I2cBusScanner:
         getLogger('pyftdi.i2c').setLevel(ERROR)
         try:
             i2c.set_retry_count(1)
+            i2c.force_clock_mode(force)
             i2c.configure(url)
             for addr in range(cls.HIGHEST_I2C_SLAVE_ADDRESS+1):
                 port = i2c.get_port(addr)
@@ -74,12 +75,12 @@ class I2cBusScanner:
             i2c.terminate()
         columns = 16
         row = 0
-        print('   %s' % ''.join(' %01X ' % col for col in range(columns)))
+        print('  ', ''.join(f' {col:01X} ' for col in range(columns)))
         while True:
             chunk = slaves[row:row+columns]
             if not chunk:
                 break
-            print(' %1X:' % (row//columns), '  '.join(chunk))
+            print(f' {row//columns:01X}:', '  '.join(chunk))
             row += columns
 
 
@@ -102,6 +103,8 @@ def main():
                                help='increase verbosity')
         argparser.add_argument('-d', '--debug', action='store_true',
                                help='enable debug mode')
+        argparser.add_argument('-F', '--force', action='store_true',
+                               help='force clock mode (for FT2232D)')
         args = argparser.parse_args()
         debug = args.debug
 
@@ -120,7 +123,7 @@ def main():
         FtdiLogger.set_level(loglevel)
 
         if args.virtual:
-            #pylint: disable-msg=import-outside-toplevel
+            # pylint: disable=import-outside-toplevel
             from pyftdi.usbtools import UsbTools
             # Force PyUSB to use PyFtdi test framework for USB backends
             UsbTools.BACKENDS = ('pyftdi.tests.backend.usbvirt', )
@@ -134,19 +137,19 @@ def main():
         except ValueError as exc:
             argparser.error(str(exc))
 
-        I2cBusScanner.scan(args.device, not args.no_smb)
+        I2cBusScanner.scan(args.device, not args.no_smb, args.force)
 
     except (ImportError, IOError, NotImplementedError, ValueError) as exc:
-        print('\nError: %s' % exc, file=stderr)
+        print(f'\nError: {exc}', file=stderr)
         if debug:
             print(format_exc(chain=False), file=stderr)
-        exit(1)
+        sys_exit(1)
     except KeyboardInterrupt:
-        exit(2)
+        sys_exit(2)
 
 
 if __name__ == '__main__':
     try:
         main()
-    except Exception as exc:
-        print(str(exc), file=stderr)
+    except Exception as _exc:
+        print(str(_exc), file=stderr)

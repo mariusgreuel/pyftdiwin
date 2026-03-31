@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2017-2020, Emmanuel Blot <emmanuel.blot@free.fr>
+"""UART unit tests."""
+
+# Copyright (c) 2017-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -16,14 +18,14 @@ from struct import calcsize as scalc, pack as spack, unpack as sunpack
 from sys import modules, platform, stdout
 from time import sleep, time as now
 from threading import Thread
-from unittest import TestCase, TestSuite, skipIf, makeSuite, main as ut_main
+from unittest import TestCase, TestLoader, TestSuite, skipIf, main as ut_main
 from pyftdi import FtdiLogger
 from pyftdi.ftdi import Ftdi
 from pyftdi.misc import to_bool
 from pyftdi.serialext import serial_for_url
 
-#pylint: disable-msg=missing-docstring
-#pylint: disable-msg=protected-access
+# pylint: disable=missing-docstring
+# pylint: disable=protected-access
 
 # Specify the second port for multi port device
 # Unfortunately, auto detection triggers some issue in multiprocess test
@@ -39,7 +41,7 @@ class FtdiTestCase(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.debug = to_bool(environ.get('FTDI_DEBUG', 'off'),
-                                 permissive=False)
+                            permissive=False)
 
     def setUp(self):
         if self.debug:
@@ -174,9 +176,9 @@ class UartTestCase(FtdiTestCase):
         sleep(0.5)
         sink.join()
         if isinstance(results[1], Exception):
-            #pylint: disable-msg=raising-bad-type
+            # pylint: disable=raising-bad-type
             raise results[1]
-        #pylint: disable-msg=unpacking-non-sequence
+        # pylint: disable=unpacking-non-sequence
         tsize, tdelta = results[0]
         rsize, rdelta = results[1]
         self.assertGreater(rsize, 0, 'Not data received')
@@ -205,9 +207,9 @@ class UartTestCase(FtdiTestCase):
         sleep(0.5)
         sink.join()
         if isinstance(results[1], Exception):
-            #pylint: disable-msg=raising-bad-type
+            # pylint: disable=raising-bad-type
             raise results[1]
-        #pylint: disable-msg=unpacking-non-sequence
+        # pylint: disable=unpacking-non-sequence
         tsize, tdelta = results[0]
         rsize, rdelta = results[1]
         self.assertGreater(rsize, 0, 'Not data received')
@@ -224,7 +226,7 @@ class UartTestCase(FtdiTestCase):
         tx_size = 0
         start = now()
         while tx_size < size:
-            samples = spack('>%dI' % chunk, *range(pos, pos+chunk))
+            samples = spack(f'>{chunk}I', *range(pos, pos+chunk))
             pos += chunk
             port.write(samples)
             tx_size += len(samples)
@@ -251,7 +253,8 @@ class UartTestCase(FtdiTestCase):
             data.extend(buf)
             sample_count = len(data)//sample_size
             length = sample_count*sample_size
-            samples = sunpack('>%dI' % sample_count, data[:length])
+            samples = sunpack(f'>{sample_count}I' % sample_count,
+                              data[:length])
             data = data[length:]
             for sample in samples:
                 if first is None:
@@ -316,7 +319,7 @@ class UartTestCase(FtdiTestCase):
     def build_next_url(cls, url):
         iface = int(url[-1])
         iface = (iface + 1) % 3
-        return '%s%d' % (url[:-1], iface)
+        return f'{url[:-1]}{iface}'
 
 
 class BaudrateTestCase(FtdiTestCase):
@@ -340,8 +343,7 @@ class BaudrateTestCase(FtdiTestCase):
 
 def suite():
     suite_ = TestSuite()
-    suite_.addTest(makeSuite(BaudrateTestCase, 'test'))
-    suite_.addTest(makeSuite(UartTestCase, 'test'))
+    suite_.addTest(TestLoader().loadTestsFromModule(modules[__name__]))
     return suite_
 
 
@@ -352,9 +354,10 @@ def main():
     try:
         loglevel = getattr(logging, level)
     except AttributeError as exc:
-        raise ValueError('Invalid log level: %s' % level) from exc
+        raise ValueError(f'Invalid log level: {level}') from exc
     FtdiLogger.set_level(loglevel)
     ut_main(defaultTest='suite')
+
 
 if __name__ == '__main__':
     if platform == 'darwin':

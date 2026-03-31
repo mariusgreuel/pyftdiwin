@@ -6,12 +6,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-#pylint: disable-msg=empty-docstring
-#pylint: disable-msg=missing-docstring
-#pylint: disable-msg=no-self-use
+# pylint: disable=empty-docstring
+# pylint: disable=missing-docstring
 
 import logging
-import unittest
+from unittest import TestCase, TestLoader, TestSuite, main as ut_main
 from binascii import hexlify
 from doctest import testmod
 from os import environ
@@ -102,7 +101,7 @@ class SpiRfda2125Test:
         self._spi.terminate()
 
 
-class SpiTestCase(unittest.TestCase):
+class SpiTestCase(TestCase):
     """FTDI SPI driver test case
 
        Simple test to demonstrate SPI feature.
@@ -144,7 +143,7 @@ class SpiTestCase(unittest.TestCase):
         spi.close()
 
 
-class SpiGpioTestCase(unittest.TestCase):
+class SpiGpioTestCase(TestCase):
     """Basic test for GPIO access w/ SPI mode
 
        It expects the following I/O setup:
@@ -218,7 +217,7 @@ class SpiGpioTestCase(unittest.TestCase):
         self.assertRaises(SpiIOError, self._io.write, ac_pins)
 
 
-class SpiUnalignedTestCase(unittest.TestCase):
+class SpiUnalignedTestCase(TestCase):
     """Basic test for SPI with non 8-bit multiple transfer
 
        It expects the following I/O setup:
@@ -297,7 +296,7 @@ class SpiUnalignedTestCase(unittest.TestCase):
         for loop in range(7):
             data = self._port.exchange(buf, duplex=True, droptail=loop+1)
             self.assertEqual(len(data), 1)
-            exp = buf[0] & ~((1<<(loop+1))-1)
+            exp = buf[0] & ~((1 << (loop+1))-1)
             # print(f'{data[0]:08b} {exp:08b}')
             self.assertEqual(data[0], exp)
 
@@ -306,13 +305,13 @@ class SpiUnalignedTestCase(unittest.TestCase):
         for loop in range(7):
             data = self._port.exchange(buf, duplex=True, droptail=loop+1)
             self.assertEqual(len(data), 2)
-            exp = buf[-1] & ~((1<<(loop+1))-1)
+            exp = buf[-1] & ~((1 << (loop+1))-1)
             # print(f'{data[-1]:08b} {exp:08b}')
             self.assertEqual(data[0], 0xFF)
             self.assertEqual(data[-1], exp)
 
 
-class SpiCsForceTestCase(unittest.TestCase):
+class SpiCsForceTestCase(TestCase):
     """Basic test for exercing direct /CS control.
 
        It requires a scope or a digital analyzer to validate the signal
@@ -363,11 +362,14 @@ class SpiCsForceTestCase(unittest.TestCase):
 
 
 def suite():
-    suite_ = unittest.TestSuite()
-    # suite_.addTest(unittest.makeSuite(SpiTestCase, 'test'))
-    # suite_.addTest(unittest.makeSuite(SpiGpioTestCase, 'test'))
-    suite_.addTest(unittest.makeSuite(SpiUnalignedTestCase, 'test'))
-    suite_.addTest(unittest.makeSuite(SpiCsForceTestCase, 'test'))
+    suite_ = TestSuite()
+    loader = TestLoader()
+    mod = modules[__name__]
+    tests = (  # 'Spi',
+             'SpiGpio', 'SpiUnaligned', 'SpiCsForce')
+    for testname in tests:
+        testcase = getattr(mod, f'{testname}TestCase')
+        suite_.addTest(loader.loadTestsFromTestCase(testcase))
     return suite_
 
 
@@ -380,7 +382,7 @@ def main():
     except AttributeError as exc:
         raise ValueError(f'Invalid log level: {level}') from exc
     FtdiLogger.set_level(loglevel)
-    unittest.main(defaultTest='suite')
+    ut_main(defaultTest='suite')
 
 
 if __name__ == '__main__':

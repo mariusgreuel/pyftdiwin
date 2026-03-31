@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2017-2020, Emmanuel Blot <emmanuel.blot@free.fr>
+"""I2C unit tests."""
+
+# Copyright (c) 2017-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 import logging
-from unittest import TestCase, TestSuite, main as ut_main, makeSuite
+from unittest import TestCase, TestLoader, TestSuite, main as ut_main
 from binascii import hexlify
 from doctest import testmod
 from os import environ
 from sys import modules, stdout
+from time import time as now
 from pyftdi import FtdiLogger
 from pyftdi.i2c import I2cController, I2cIOError
 from pyftdi.misc import pretty_size
 
-#pylint: disable-msg=attribute-defined-outside-init
-#pylint: disable-msg=missing-docstring
-#pylint: disable-msg=no-self-use
+# pylint: disable=attribute-defined-outside-init
+# pylint: disable=missing-docstring
 
 
 class I2cTca9555TestCase(TestCase):
@@ -52,7 +54,7 @@ class I2cTca9555TestCase(TestCase):
         self._i2c.terminate()
 
 
-class I2cAccelTest(TestCase):
+class I2cAccelTestCase(TestCase):
     """Basic test for an ADXL345 device on I2C bus @ address 0x53
     """
 
@@ -79,7 +81,7 @@ class I2cAccelTest(TestCase):
         self._i2c.terminate()
 
 
-class I2cReadTest(TestCase):
+class I2cReadTestCase(TestCase):
     """Simple test to read a sequence of bytes I2C bus @ address 0x36
     """
 
@@ -106,7 +108,7 @@ class I2cReadTest(TestCase):
         self._i2c.terminate()
 
 
-class I2cEepromTest(TestCase):
+class I2cEepromTestCase(TestCase):
     """Simple test to read a sequence of bytes I2C bus @ address 0x50,
        from an I2C data flash
     """
@@ -137,9 +139,6 @@ class I2cEepromTest(TestCase):
     def test_long(self):
         port = self._i2c.get_port(self.address)
         # select start address
-        #print('RC', self._i2c.ftdi.read_data_get_chunksize())
-        #print('WC', self._i2c.ftdi.write_data_get_chunksize())
-        from time import time as now
         size = 4096
         port.write(b'\x00\x00')
         start = now()
@@ -152,7 +151,7 @@ class I2cEepromTest(TestCase):
         self.assertEqual(text[8:12], 'Worl')
 
 
-class I2cReadGpioTest(TestCase):
+class I2cReadGpioTestCase(TestCase):
     """Simple test to exercise I2C + GPIO mode.
 
        A slave device (such as EEPROM) should be connected to the I2C bus
@@ -226,7 +225,7 @@ class I2cReadGpioTest(TestCase):
         self._i2c.terminate()
 
 
-class I2cClockStrechingGpioCheck(TestCase):
+class I2cClockStrechingGpioTestCase(TestCase):
     """Simple test to check clock stretching cannot be overwritten with
        GPIOs.
     """
@@ -239,16 +238,16 @@ class I2cClockStrechingGpioCheck(TestCase):
         self.assertRaises(I2cIOError, gpio.set_direction, 1 << 7, 0)
 
 
-class I2cDualMaster(TestCase):
+class I2cDualMasterTestCase(TestCase):
     """Check the behaviour of 2 I2C masters. Requires a multi port FTDI device,
-       i.e. FT2232H or FT4232H. See issue #159.
+       i.e. FT2232H, FT4232H or FT4232HA. See issue #159.
     """
 
     def test(self):
         url1 = environ.get('FTDI_DEVICE', 'ftdi:///1')
         i2c1 = I2cController()
         i2c1.configure(url1, frequency=100000)
-        url2 = '%s%d' % (url1[:-1], int(url1[-1])+1)
+        url2 = f'{url1[:-1]}{int(url1[-1])+1}'
         i2c2 = I2cController()
         i2c2.configure(url2, frequency=100000)
         port = i2c2.get_port(0x76)
@@ -256,7 +255,7 @@ class I2cDualMaster(TestCase):
         print(port.read_from(0x00, 2))
 
 
-class I2cIssue143(TestCase):
+class I2cIssue143TestCase(TestCase):
     """#143.
     """
 
@@ -270,11 +269,11 @@ class I2cIssue143(TestCase):
         gpio = i2c.get_gpio()
         gpio.set_direction(0x0010, 0x0010)
         gpio.write(0)
-        gpio.write(1<<4)
+        gpio.write(1 << 4)
         gpio.write(0)
         slave.write([0x12, 0x34])
         gpio.write(0)
-        gpio.write(1<<4)
+        gpio.write(1 << 4)
         gpio.write(0)
 
 
@@ -290,16 +289,17 @@ def suite():
        Do NOT run this test if you use FTDI port A as an UART or SPI
        bridge -or any unsupported setup!! You've been warned.
     """
-    ste = TestSuite()
-    #ste.addTest(I2cTca9555TestCase('test'))
-    #ste.addTest(I2cAccelTest('test'))
-    #ste.addTest(I2cReadTest('test'))
-    ste.addTest(makeSuite(I2cEepromTest, 'test'))
-    #ste.addTest(I2cReadGpioTest('test'))
-    ste.addTest(I2cClockStrechingGpioCheck('test'))
-    #ste.addTest(I2cDualMaster('test'))
-    ste.addTest(I2cIssue143('test'))
-    return ste
+    suite_ = TestSuite()
+    loader = TestLoader()
+    mod = modules[__name__]
+    tests = (  # 'I2cTca9555', 'I2cAccel', 'I2cRead',
+             'I2cEeprom',  # 'I2cReadGpio',
+             'I2cClockStrechingGpio',  # 'I2cDualMaster',
+             'I2cIssue143')
+    for testname in tests:
+        testcase = getattr(mod, f'{testname}TestCase')
+        suite_.addTest(loader.loadTestsFromTestCase(testcase))
+    return suite_
 
 
 def main():

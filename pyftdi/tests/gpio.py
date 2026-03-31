@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2016-2020, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2016-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-#pylint: disable-msg=empty-docstring
-#pylint: disable-msg=missing-docstring
-#pylint: disable-msg=invalid-name
-#pylint: disable-msg=global-statement
+# pylint: disable=empty-docstring
+# pylint: disable=global-statement
+# pylint: disable=invalid-name
+# pylint: disable=missing-docstring
 
 import logging
 from collections import deque
 from os import environ
 from sys import modules, stdout
 from time import sleep
-from unittest import TestCase, TestSuite, SkipTest, makeSuite, main as ut_main
+from unittest import TestCase, TestLoader, TestSuite, SkipTest, main as ut_main
 from pyftdi import FtdiLogger
 from pyftdi.ftdi import Ftdi
 from pyftdi.gpio import (GpioAsyncController,
@@ -103,16 +103,16 @@ class GpioAsyncTestCase(FtdiTestCase):
            For now, it requires a logic analyzer to verify the output,
            this is not automatically validated by SW
         """
-        direction = 0xFF & ~((1 << 4) - 1) # 4 Out, 4 In
+        direction = 0xFF & ~((1 << 4) - 1)  # 4 Out, 4 In
         gpio = GpioAsyncController()
         gpio.configure(self.url, direction=direction, frequency=1e3,
                        initial=0x0)
         port = gpio.get_gpio()
         # emit a sequence as a visual marker on b3,b2,b1,b0
-        port.write([x<<4 for x in range(16)])
+        port.write([x << 4 for x in range(16)])
         sleep(0.01)
         # write 0b0110 to the port
-        port.write(0x6<<4)
+        port.write(0x6 << 4)
         sleep(0.001)
         # close w/o freeze: all the outputs should be reset (usually 0b1111)
         # it might need pull up (or pull down) to observe the change as
@@ -123,21 +123,20 @@ class GpioAsyncTestCase(FtdiTestCase):
                        initial=0x0)
         port = gpio.get_gpio()
         # emit a sequence as a visual marker with on b3 and b1
-        port.write([(x<<4)&0x90 for x in range(16)])
+        port.write([(x << 4) & 0x90 for x in range(16)])
         sleep(0.01)
         # write 0b0110 to the port
-        port.write(0x6<<4)
+        port.write(0x6 << 4)
         sleep(0.01)
         # close w/ freeze: outputs should not be reset (usually 0b0110)
         gpio.close(True)
-
 
     def test_gpio_values(self):
         """Simple test to demonstrate bit-banging.
         """
         if self.skip_loopback:
             raise SkipTest('Skip loopback test on multiport device')
-        direction = 0xFF & ~((1 << 4) - 1) # 4 Out, 4 In
+        direction = 0xFF & ~((1 << 4) - 1)  # 4 Out, 4 In
         gpio = GpioAsyncController()
         gpio.configure(self.url, direction=direction, frequency=1e6,
                        initial=0x0)
@@ -182,7 +181,7 @@ class GpioAsyncTestCase(FtdiTestCase):
             raise SkipTest('Skip initial test on multiport device')
         if not self.loader:
             raise SkipTest('Skip initial test on physical device')
-        direction = 0xFF & ~((1 << 4) - 1) # 4 Out, 4 In
+        direction = 0xFF & ~((1 << 4) - 1)  # 4 Out, 4 In
         vftdi = self.loader.get_virtual_ftdi(1, 1)
         vport = vftdi.get_port(1)
         gpio = GpioAsyncController()
@@ -199,7 +198,7 @@ class GpioAsyncTestCase(FtdiTestCase):
         if self.skip_loopback:
             raise SkipTest('Skip loopback test on multiport device')
         gpio = GpioAsyncController()
-        direction = 0xFF & ~((1 << 4) - 1) # 4 Out, 4 In
+        direction = 0xFF & ~((1 << 4) - 1)  # 4 Out, 4 In
         gpio.configure(self.url, direction=direction, frequency=800000)
         for out in range(16):
             # print(f'Write {out:04b} -> {out << 4:08b}')
@@ -211,7 +210,7 @@ class GpioAsyncTestCase(FtdiTestCase):
             self.assertEqual(lsbs, out)
             # check level of outputs match the ones written
             self.assertEqual(msbs, out)
-        outs = list([(out & 0xf) << 4 for out in range(1000)])
+        outs = list((out & 0xf) << 4 for out in range(1000))
         gpio.write(outs)
         gpio.ftdi.read_data(512)
         for _ in range(len(outs)):
@@ -234,7 +233,7 @@ class GpioAsyncTestCase(FtdiTestCase):
         # mesure their frequency. The EEPROM should be configured to enable
         # those signal on some of the CBUS pins, for example.
         gpio = GpioAsyncController()
-        direction = 0xFF & ~((1 << 4) - 1) # 4 Out, 4 In
+        direction = 0xFF & ~((1 << 4) - 1)  # 4 Out, 4 In
         gpio.configure(self.url, direction=direction)
         buf = bytes([0xf0, 0x00, 0xf0, 0x00, 0xf0, 0x00, 0xf0, 0x00])
         freqs = [50e3, 200e3, 1e6, 3e6]
@@ -307,10 +306,10 @@ class GpioSyncTestCase(FtdiTestCase):
         """
         if self.skip_loopback:
             raise SkipTest('Skip loopback test on multiport device')
-        direction = 0xFF & ~((1 << 4) - 1) # 4 Out, 4 In
+        direction = 0xFF & ~((1 << 4) - 1)  # 4 Out, 4 In
         gpio = GpioSyncController()
         gpio.configure(self.url, direction=direction, initial=0xee)
-        outs = bytes([(out & 0xf)<<4 for out in range(1000)])
+        outs = bytes([(out & 0xf) << 4 for out in range(1000)])
         ins = gpio.exchange(outs)
         exp_in_count = min(len(outs), gpio.ftdi.fifo_sizes[0])
         self.assertEqual(len(ins), exp_in_count)
@@ -336,7 +335,7 @@ class GpioSyncTestCase(FtdiTestCase):
         # mesure their frequency. The EEPROM should be configured to enable
         # those signal on some of the CBUS pins, for example.
         gpio = GpioSyncController()
-        direction = 0xFF & ~((1 << 4) - 1) # 4 Out, 4 In
+        direction = 0xFF & ~((1 << 4) - 1)  # 4 Out, 4 In
         gpio.configure(self.url, direction=direction)
         buf = bytes([0xf0, 0x00] * 64)
         freqs = [50e3, 200e3, 1e6, 3e6]
@@ -354,7 +353,8 @@ class GpioSyncTestCase(FtdiTestCase):
 
 
 class GpioMultiportTestCase(FtdiTestCase):
-    """FTDI GPIO test for multi-port FTDI devices, i.e. FT2232H/FT4232H.
+    """FTDI GPIO test for multi-port FTDI devices,
+       i.e. FT2232H/FT4232H/FT4232HA.
 
        Please ensure that the HW you connect to the FTDI port A does match
        the encoded configuration. Check your HW setup before running this test
@@ -443,12 +443,11 @@ class GpioMultiportTestCase(FtdiTestCase):
             qout.popleft()
         # offset is the count of missed bytes
         offset = len(ins)-len(qout)
-        self.assertGreater(offset, 0) # no more output than input
-        self.assertLess(offset, 16) # seems to be in the 6..12 range
+        self.assertGreater(offset, 0)  # no more output than input
+        self.assertLess(offset, 16)  # seems to be in the 6..12 range
         # print('Offset', offset)
         # check that the remaining sequence match
         for sout, sin in zip(qout, ins):
-            #print(f'{sout:08b} --> {sin:08b}')
             # check inputs match outputs
             self.assertEqual(sout, sin)
         gpio_in.close()
@@ -579,7 +578,6 @@ class GpioMpsseTestCase(FtdiTestCase):
             inv = gpio_in.read(peek=True)
             # check inputs match outputs
             self.assertEqual(inv, out)
-            #print(f'{out} {inv}')
             # check level of outputs match the ones written
             self.assertEqual(outv, out)
         gpio_in.close()
@@ -609,16 +607,14 @@ class GpioMpsseTestCase(FtdiTestCase):
 
 def suite():
     suite_ = TestSuite()
-    suite_.addTest(makeSuite(GpioAsyncTestCase, 'test'))
-    suite_.addTest(makeSuite(GpioSyncTestCase, 'test'))
-    suite_.addTest(makeSuite(GpioMpsseTestCase, 'test'))
-    suite_.addTest(makeSuite(GpioMultiportTestCase, 'test'))
+    suite_.addTest(TestLoader().loadTestsFromModule(modules[__name__]))
     return suite_
 
 
 def virtualize():
     if not to_bool(environ.get('FTDI_VIRTUAL', 'off')):
         return
+    # pylint: disable=import-outside-toplevel
     from pyftdi.usbtools import UsbTools
     # Force PyUSB to use PyFtdi test framework for USB backends
     UsbTools.BACKENDS = ('backend.usbvirt', )
@@ -632,9 +628,10 @@ def virtualize():
         raise AssertionError('Cannot load virtual USB backend') from exc
 
 
-def main():
-    import doctest
-    doctest.testmod(modules[__name__])
+def setup_module():
+    # pylint: disable=import-outside-toplevel
+    from doctest import testmod
+    testmod(modules[__name__])
     debug = to_bool(environ.get('FTDI_DEBUG', 'off'))
     if debug:
         formatter = logging.Formatter('%(asctime)s.%(msecs)03d %(levelname)-7s'
@@ -651,6 +648,10 @@ def main():
     FtdiLogger.set_level(loglevel)
     FtdiLogger.set_formatter(formatter)
     virtualize()
+
+
+def main():
+    setup_module()
     try:
         ut_main(defaultTest='suite')
     except KeyboardInterrupt:

@@ -34,14 +34,14 @@ SPI master
 
 Supported devices:
 
-=====  ===== ====== ====================================================
+=====  ===== ====== ============================================================
 Mode   CPol   CPha  Status
-=====  ===== ====== ====================================================
+=====  ===== ====== ============================================================
   0      0      0   Supported on all MPSSE devices
   1      0      1   Workaround available for on -H series
-  2      1      0   Supported on -H series (FT232H_/FT2232H_/FT4232H_)
+  2      1      0   Supported on -H series (FT232H_/FT2232H_/FT4232H_/FT4232HA_)
   3      1      1   Workaround available for on -H series
-=====  ===== ====== ====================================================
+=====  ===== ====== ============================================================
 
 PyFtdi_ can be used with pyspiflash_ module that demonstrates how to
 use the FTDI SPI master with a pure-Python serial flash device driver for
@@ -61,7 +61,7 @@ Note: FTDI*232* devices cannot be used as an SPI slave.
 |I2C| master
 ````````````
 
-Supported devices: FT232H_, FT2232H_, FT4232H_
+Supported devices: FT232H_, FT2232H_, FT4232H_, FT4232HA_
 
 For now, only 7-bit addresses are supported.
 
@@ -83,6 +83,9 @@ JTAG
 JTAG API is limited to low-level access. It is not intented to be used for
 any flashing or debugging purpose, but may be used as a base to perform SoC
 tests and boundary scans.
+
+It requires the PyJtagTools_ Python module which integrates a JTAG engine, while
+PyFtdi_ implements the FTDI JTAG backend.
 
 EEPROM
 ``````

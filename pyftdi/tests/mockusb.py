@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2020-2021, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2020-2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 
-#pylint: disable-msg=empty-docstring
-#pylint: disable-msg=missing-docstring
-#pylint: disable-msg=no-self-use
-#pylint: disable-msg=invalid-name
-#pylint: disable-msg=global-statement
-#pylint: disable-msg=too-many-locals
-
+# pylint: disable=empty-docstring
+# pylint: disable=global-statement
+# pylint: disable=invalid-name
+# pylint: disable=missing-docstring
+# pylint: disable=too-many-locals
 
 import logging
 from collections import defaultdict
@@ -19,8 +17,8 @@ from doctest import testmod
 from io import StringIO
 from os import environ
 from string import ascii_letters
-from sys import modules, stdout, version_info
-from unittest import TestCase, TestSuite, makeSuite, main as ut_main
+from sys import modules, stdout
+from unittest import TestCase, TestLoader, TestSuite, main as ut_main
 from urllib.parse import urlsplit
 from pyftdi import FtdiLogger
 from pyftdi.eeprom import FtdiEeprom
@@ -101,16 +99,18 @@ class MockUsbToolsTestCase(FtdiTestCase):
                 '232h': 0x6014,
                 '2232h': 0x6010,
                 '4232h': 0x6011,
+                '4232ha': 0x6048,
             }
         }
         devs = UsbTools.list_devices('ftdi:///?', vids, pids, vid)
-        self.assertEqual(len(devs), 6)
+        self.assertEqual(len(devs), 7)
         ifmap = {
             0x6001: 1,
             0x6010: 2,
             0x6011: 4,
             0x6014: 1,
-            0x6015: 1
+            0x6015: 1,
+            0x6048: 4
         }
         for dev, desc in devs:
             strings = UsbTools.build_dev_strings('ftdi', vids, pids,
@@ -143,22 +143,25 @@ class MockFtdiDiscoveryTestCase(FtdiTestCase):
     def test_list_devices(self):
         """List FTDI devices."""
         devs = Ftdi.list_devices('ftdi:///?')
-        self.assertEqual(len(devs), 6)
+        self.assertEqual(len(devs), 7)
         devs = Ftdi.list_devices('ftdi://:232h/?')
         self.assertEqual(len(devs), 2)
         devs = Ftdi.list_devices('ftdi://:2232h/?')
         self.assertEqual(len(devs), 1)
         devs = Ftdi.list_devices('ftdi://:4232h/?')
         self.assertEqual(len(devs), 1)
+        devs = Ftdi.list_devices('ftdi://:4232ha/?')
+        self.assertEqual(len(devs), 1)
         out = StringIO()
         Ftdi.show_devices('ftdi:///?', out)
-        lines = [l.strip() for l in out.getvalue().split('\n')]
+        lines = [ln.strip() for ln in out.getvalue().split('\n')]
         lines.pop(0)  # "Available interfaces"
         while lines and not lines[-1]:
             lines.pop()
-        self.assertEqual(len(lines), 10)
+        self.assertEqual(len(lines), 14)
         portmap = defaultdict(int)
-        reference = {'232': 1, '2232': 2, '4232': 4, '232h': 2, 'ft-x': 1}
+        reference = {'232': 1, '2232': 2, '4232': 4, '232h': 2, 'ft-x': 1,
+                     '4232ha': 4}
         for line in lines:
             url = line.split(' ')[0].strip()
             parts = urlsplit(url)
@@ -185,7 +188,7 @@ class MockSimpleDeviceTestCase(FtdiTestCase):
         temp_stdout = StringIO()
         with redirect_stdout(temp_stdout):
             self.assertRaises(SystemExit, ftdi.open_from_url, 'ftdi:///?')
-        lines = [l.strip() for l in temp_stdout.getvalue().split('\n')]
+        lines = [ln.strip() for ln in temp_stdout.getvalue().split('\n')]
         lines.pop(0)  # "Available interfaces"
         while lines and not lines[-1]:
             lines.pop()
@@ -211,7 +214,7 @@ class MockDualDeviceTestCase(FtdiTestCase):
         temp_stdout = StringIO()
         with redirect_stdout(temp_stdout):
             self.assertRaises(SystemExit, ftdi.open_from_url, 'ftdi:///?')
-        lines = [l.strip() for l in temp_stdout.getvalue().split('\n')]
+        lines = [ln.strip() for ln in temp_stdout.getvalue().split('\n')]
         lines.pop(0)  # "Available interfaces"
         while lines and not lines[-1]:
             lines.pop()
@@ -238,7 +241,7 @@ class MockTwoPortDeviceTestCase(FtdiTestCase):
         temp_stdout = StringIO()
         with redirect_stdout(temp_stdout):
             self.assertRaises(SystemExit, ftdi.open_from_url, 'ftdi:///?')
-        lines = [l.strip() for l in temp_stdout.getvalue().split('\n')]
+        lines = [ln.strip() for ln in temp_stdout.getvalue().split('\n')]
         lines.pop(0)  # "Available interfaces"
         while lines and not lines[-1]:
             lines.pop()
@@ -250,7 +253,7 @@ class MockTwoPortDeviceTestCase(FtdiTestCase):
 
 
 class MockFourPortDeviceTestCase(FtdiTestCase):
-    """Test FTDI APIs with a quad-port FTDI device (FT4232H)
+    """Test FTDI APIs with a quad-port FTDI device (FT4232H, FT4232HA)
     """
 
     @classmethod
@@ -265,7 +268,7 @@ class MockFourPortDeviceTestCase(FtdiTestCase):
         temp_stdout = StringIO()
         with redirect_stdout(temp_stdout):
             self.assertRaises(SystemExit, ftdi.open_from_url, 'ftdi:///?')
-        lines = [l.strip() for l in temp_stdout.getvalue().split('\n')]
+        lines = [ln.strip() for ln in temp_stdout.getvalue().split('\n')]
         lines.pop(0)  # "Available interfaces"
         while lines and not lines[-1]:
             lines.pop()
@@ -292,11 +295,11 @@ class MockManyDevicesTestCase(FtdiTestCase):
         temp_stdout = StringIO()
         with redirect_stdout(temp_stdout):
             self.assertRaises(SystemExit, ftdi.open_from_url, 'ftdi:///?')
-        lines = [l.strip() for l in temp_stdout.getvalue().split('\n')]
+        lines = [ln.strip() for ln in temp_stdout.getvalue().split('\n')]
         lines.pop(0)  # "Available interfaces"
         while lines and not lines[-1]:
             lines.pop()
-        self.assertEqual(len(lines), 10)
+        self.assertEqual(len(lines), 14)
         for line in lines:
             self.assertTrue(line.startswith('ftdi://'))
             # skip description, i.e. consider URL only
@@ -304,7 +307,7 @@ class MockManyDevicesTestCase(FtdiTestCase):
             urlparts = urlsplit(url)
             self.assertEqual(urlparts.scheme, 'ftdi')
             parts = urlparts.netloc.split(':')
-            if parts[1] == '4232':
+            if (parts[1] == '4232') or (parts[1] == '4232ha'):
                 # def file contains no serial number, so expect bus:addr syntax
                 self.assertEqual(len(parts), 4)
                 self.assertRegex(parts[2], r'^\d$')
@@ -406,10 +409,10 @@ class MockSimpleGpioTestCase(FtdiTestCase):
     def test_baudrate(self):
         """Check simple GPIO write and read sequence."""
         # load custom CBUS config, with:
-            # CBUS0: GPIO (gpio)
-            # CBUS1: GPIO (gpio)
-            # CBUS0: DRIVE1 (forced to high level)
-            # CBUS0: TXLED  (eq. to highz for tests)
+        # - CBUS0: GPIO (gpio)
+        # - CBUS1: GPIO (gpio)
+        # - CBUS0: DRIVE1 (forced to high level)
+        # - CBUS0: TXLED  (eq. to highz for tests)
         with open('pyftdi/tests/resources/ft230x_io.yaml', 'rb') as yfp:
             self.loader.load(yfp)
         gpio = GpioController()
@@ -481,7 +484,6 @@ class MockSimpleUartTestCase(FtdiTestCase):
                          460800, 490000, 921600, 1000000, 1200000, 1500000,
                          2000000, 3000000):
             port.baudrate = baudrate
-            #print(f'{baudrate} -> {port.ftdi.baudrate} -> {vport.baudrate}')
             self.assertEqual(port.ftdi.baudrate, vport.baudrate)
         port.close()
 
@@ -499,7 +501,6 @@ class MockSimpleUartTestCase(FtdiTestCase):
                          460800, 490000, 921600, 1000000, 1200000, 1500000,
                          2000000, 3000000, 4000000, 6000000):
             port.baudrate = baudrate
-            #print(f'{baudrate} -> {port.ftdi.baudrate} -> {vport.baudrate}')
             self.assertEqual(port.ftdi.baudrate, vport.baudrate)
         port.close()
 
@@ -723,10 +724,10 @@ class MockCbusGpioTestCase(FtdiTestCase):
     def test_230x(self):
         """Check simple GPIO write and read sequence."""
         # load custom CBUS config, with:
-            # CBUS0: GPIO (gpio)
-            # CBUS1: GPIO (gpio)
-            # CBUS0: DRIVE1 (forced to high level)
-            # CBUS0: TXLED  (eq. to highz for tests)
+        # - CBUS0: GPIO (gpio)
+        # - CBUS1: GPIO (gpio)
+        # - CBUS0: DRIVE1 (forced to high level)
+        # - CBUS0: TXLED  (eq. to highz for tests)
         with open('pyftdi/tests/resources/ft230x_io.yaml', 'rb') as yfp:
             self.loader.load(yfp)
         ftdi = Ftdi()
@@ -769,13 +770,13 @@ class MockCbusGpioTestCase(FtdiTestCase):
 
     def test_lc231x(self):
         """Check simple GPIO write and read sequence."""
-         # load custom CBUS config, with:
-            # CBUS0: GPIO (gpio)
-            # CBUS1: TXLED
-            # CBUS2: DRIVE0 (to light up RX green led)
-            # CBUS3: GPIO (gpio)
-            # only CBUS0 and CBUS3 are available on LC231X
-            # CBUS1 is connected to TX led, CBUS2 to RX led
+        # load custom CBUS config, with:
+        # - CBUS0: GPIO (gpio)
+        # - CBUS1: TXLED
+        # - CBUS2: DRIVE0 (to light up RX green led)
+        # - CBUS3: GPIO (gpio)
+        #   only CBUS0 and CBUS3 are available on LC231X
+        # - CBUS1 is connected to TX led, CBUS2 to RX led
         with open('pyftdi/tests/resources/ft231x_cbus.yaml', 'rb') as yfp:
             self.loader.load(yfp)
         ftdi = Ftdi()
@@ -816,25 +817,11 @@ class MockCbusGpioTestCase(FtdiTestCase):
 
 def suite():
     suite_ = TestSuite()
-    suite_.addTest(makeSuite(MockUsbToolsTestCase, 'test'))
-    suite_.addTest(makeSuite(MockFtdiDiscoveryTestCase, 'test'))
-    suite_.addTest(makeSuite(MockSimpleDeviceTestCase, 'test'))
-    suite_.addTest(makeSuite(MockDualDeviceTestCase, 'test'))
-    suite_.addTest(makeSuite(MockTwoPortDeviceTestCase, 'test'))
-    suite_.addTest(makeSuite(MockFourPortDeviceTestCase, 'test'))
-    suite_.addTest(makeSuite(MockManyDevicesTestCase, 'test'))
-    suite_.addTest(makeSuite(MockSimpleDirectTestCase, 'test'))
-    suite_.addTest(makeSuite(MockSimpleMpsseTestCase, 'test'))
-    suite_.addTest(makeSuite(MockSimpleGpioTestCase, 'test'))
-    suite_.addTest(makeSuite(MockSimpleUartTestCase, 'test'))
-    suite_.addTest(makeSuite(MockRawExtEepromTestCase, 'test'))
-    suite_.addTest(makeSuite(MockRawIntEepromTestCase, 'test'))
-    suite_.addTest(makeSuite(MockCBusEepromTestCase, 'test'))
-    suite_.addTest(makeSuite(MockCbusGpioTestCase, 'test'))
+    suite_.addTest(TestLoader().loadTestsFromModule(modules[__name__]))
     return suite_
 
 
-def main():
+def setup_module():
     testmod(modules[__name__])
     debug = to_bool(environ.get('FTDI_DEBUG', 'off'))
     if debug:
@@ -861,6 +848,10 @@ def main():
         MockLoader = backend.create_loader()
     except AttributeError as exc:
         raise AssertionError('Cannot load virtual USB backend') from exc
+
+
+def main():
+    setup_module()
     ut_main(defaultTest='suite')
 
 

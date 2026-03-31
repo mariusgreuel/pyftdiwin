@@ -1,8 +1,10 @@
 # PyFtdiWin
 
+
 ![Python package](https://github.com/mariusgreuel/pyftdiwin/workflows/Python%20package/badge.svg)
 ![Mock tests](https://github.com/mariusgreuel/pyftdiwin/workflows/Python%20mock%20tests/badge.svg)
 ![Syntax tests](https://github.com/mariusgreuel/pyftdiwin/workflows/Python%20syntax%20tests/badge.svg)
+
 [![StandWithUkraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://vshymanskyy.github.io/StandWithUkraine)
 
 [![PyPI](https://img.shields.io/pypi/v/pyftdiwin.svg?maxAge=2592000)](https://pypi.org/project/pyftdiwin/)
@@ -44,6 +46,7 @@ Suported FTDI devices include:
   * FT232H (single port, clock up to 30 MHz)
   * FT2232H (dual port, clock up to 30 MHz)
   * FT4232H (quad port, clock up to 30 MHz)
+  * FT4232HA (quad port, clock up to 30 MHz)
 
 ## Features
 
@@ -90,6 +93,6 @@ pip install pyftdiwin
 
 ### Python support
 
-PyFtdi requires Python 3.7+.
+PyFtdi requires Python 3.9+.
 
 See `pyftdi/doc/requirements.rst` for more details.

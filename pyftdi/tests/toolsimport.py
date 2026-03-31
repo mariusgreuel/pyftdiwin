@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2020, Emmanuel Blot <emmanuel.blot@free.fr>
+# Copyright (c) 2024, Emmanuel Blot <emmanuel.blot@free.fr>
 # All rights reserved.
 
-#pylint: disable-msg=empty-docstring
-#pylint: disable-msg=missing-docstring
-#pylint: disable-msg=no-self-use
-#pylint: disable-msg=invalid-name
-#pylint: disable-msg=global-statement
+# pylint: disable=empty-docstring
+# pylint: disable=global-statement
+# pylint: disable=invalid-name
+# pylint: disable=missing-docstring
 
 from doctest import testmod
 from importlib import import_module
 from os.path import dirname, join as joinpath
 from sys import modules, path as syspath
-from unittest import TestCase, TestSuite, makeSuite, main as ut_main
+from unittest import TestCase, TestLoader, TestSuite, main as ut_main
 
 
 class ToolsTestCase(TestCase):
@@ -23,7 +22,7 @@ class ToolsTestCase(TestCase):
        This is especially useful to find Python syntax version mismatch
        and other not-yet-supported modules/features.
 
-       PyFtdi and tools should support Python 3.7 onwards.
+       PyFtdi and tools should support Python 3.9 onwards.
     """
 
     @classmethod
@@ -58,7 +57,7 @@ class ToolsTestCase(TestCase):
 
 def suite():
     suite_ = TestSuite()
-    suite_.addTest(makeSuite(ToolsTestCase, 'test'))
+    suite_.addTest(TestLoader().loadTestsFromModule(modules[__name__]))
     return suite_
 
 
